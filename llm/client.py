@@ -1,8 +1,11 @@
+import time
 import requests
 
 
 class LLMClient:
     """统一封装：Ollama / OpenAI 兼容 API（DeepSeek、Claude-via-proxy 等）"""
+
+    MAX_RETRIES = 3
 
     def __init__(self, config: dict):
         self.provider = config["provider"]          # "ollama" | "openai_compatible"
@@ -18,9 +21,19 @@ class LLMClient:
             raise ValueError("LLM config 缺少 base_url 字段")
 
     def generate(self, system: str, user: str) -> str:
-        if self.provider == "ollama":
-            return self._ollama(system, user)
-        return self._openai_compat(system, user)
+        last_err = None
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                if self.provider == "ollama":
+                    return self._ollama(system, user)
+                return self._openai_compat(system, user)
+            except (ConnectionError, TimeoutError) as e:
+                last_err = e
+                if attempt < self.MAX_RETRIES - 1:
+                    wait = 2 ** attempt
+                    print(f"  ⚠️  请求失败，{wait}s 后重试 ({attempt + 1}/{self.MAX_RETRIES}): {e}")
+                    time.sleep(wait)
+        raise last_err  # type: ignore[misc]
 
     # ------------------------------------------------------------------
     def _ollama(self, system: str, user: str) -> str:
@@ -49,7 +62,11 @@ class LLMClient:
             detail = resp.text[:300]
             raise RuntimeError(f"Ollama 返回 {resp.status_code}: {detail}")
 
-        body = resp.json()
+        try:
+            body = resp.json()
+        except ValueError:
+            raise RuntimeError(f"Ollama 返回了无效 JSON: {resp.text[:200]}")
+
         if "error" in body:
             raise RuntimeError(f"Ollama 错误: {body['error']}")
         return body.get("message", {}).get("content", "")
@@ -96,9 +113,15 @@ class LLMClient:
             detail = resp.text[:300]
             raise RuntimeError(f"API 返回 {resp.status_code}: {detail}")
 
-        body = resp.json()
+        try:
+            body = resp.json()
+        except ValueError:
+            raise RuntimeError(f"API 返回了无效 JSON: {resp.text[:200]}")
+
         if "error" in body:
-            raise RuntimeError(f"API 错误: {body['error'].get('message', body['error'])}")
+            err = body["error"]
+            msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
+            raise RuntimeError(f"API 错误: {msg}")
 
         choices = body.get("choices")
         if not choices:

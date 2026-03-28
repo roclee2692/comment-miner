@@ -2,40 +2,92 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+// ── i18n ──────────────────────────────────────────────────────────────────
+const T = {
+  zh: {
+    config: "⚙ 配置", pipeline: "▶ Pipeline", gems: "💎 精华", report: "📊 报告",
+    videoInfo: "视频信息", videoUrl: "视频 URL *", videoUrlPh: "YouTube 或 B站链接，如 https://www.bilibili.com/video/BV...",
+    urlError: "请输入 YouTube 或 B站 视频链接",
+    videoTitle: "视频标题（可选，帮助 LLM 理解主题）", videoTitlePh: "例如：一加13T 深度评测",
+    videoBrief: "视频简介（可选）", videoBriefPh: "简要描述视频核心内容...",
+    ytKey: "YouTube API Key（仅 YouTube 需要，B站无需填写）",
+    biliSess: "B站 SESSDATA Cookie（可选，提高B站采集稳定性）", biliSessPh: "填入后可避免反爬拦截",
+    biliSessHelp: "获取方式：浏览器登录 B站 → F12 → Application → Cookies → bilibili.com → 复制 SESSDATA 的值",
+    maxComments: (n) => `最大采集评论数：${n.toLocaleString()}`,
+    modelPreset: "模型方案", modelConfig: "模型配置",
+    readerLabel: "Stage 1 · 精读模型", thinkerLabel: "Stage 2 · 思考模型",
+    ollamaLocal: "Ollama 本地",
+    startAnalysis: "开始分析", running: "运行中...",
+    stages: ["🧹 采集&硬筛", "📖 LLM精读", "🧠 思考报告", "✅ 完成"],
+    noRun: "尚未运行 — 去配置页填参数后点「开始分析」",
+    retryConfig: "返回配置重试", viewGems: "查看精华评论", viewReport: "查看分析报告",
+    copied: "已复制", copy: "复制", copyTitle: "复制到剪贴板",
+    gemsEmpty: "精华评论将在 Stage 1 完成后出现", reportEmpty: "深度报告将在 Stage 2 完成后出现",
+    connError: "连接中断，请检查后端是否正常运行", reqFail: "请求失败",
+    openSource: "开源免费", license: "CC BY-NC 4.0 — 禁止商用",
+    presets: {
+      gemini:   { name: "Google Gemini（有$300赠金）", desc: "免费额度充裕，效果好" },
+      deepseek: { name: "DeepSeek（性价比之王）",       desc: "约 ¥0.3/次，国产最强" },
+      openai:   { name: "OpenAI GPT-5.4",              desc: "最新旗舰，约 $0.5/次" },
+      claude:   { name: "Claude 4.6",                   desc: "Anthropic，约 $0.8/次" },
+      local:    { name: "全本地（零成本）",              desc: "需要 Ollama + GPU" },
+      hybrid:   { name: "混搭（本地+API）",             desc: "本地精读 + API 写报告" },
+    },
+  },
+  en: {
+    config: "⚙ Config", pipeline: "▶ Pipeline", gems: "💎 Gems", report: "📊 Report",
+    videoInfo: "Video Info", videoUrl: "Video URL *", videoUrlPh: "YouTube or Bilibili link, e.g. https://www.bilibili.com/video/BV...",
+    urlError: "Please enter a YouTube or Bilibili video link",
+    videoTitle: "Video Title (optional, helps LLM understand the topic)", videoTitlePh: "e.g. OnePlus 13T In-Depth Review",
+    videoBrief: "Video Description (optional)", videoBriefPh: "Briefly describe the video content...",
+    ytKey: "YouTube API Key (only needed for YouTube, not for Bilibili)",
+    biliSess: "Bilibili SESSDATA Cookie (optional, improves stability)", biliSessPh: "Helps avoid anti-scraping blocks",
+    biliSessHelp: "How to get: Log in to Bilibili → F12 → Application → Cookies → bilibili.com → Copy SESSDATA value",
+    maxComments: (n) => `Max comments: ${n.toLocaleString()}`,
+    modelPreset: "Model Presets", modelConfig: "Model Config",
+    readerLabel: "Stage 1 · Reader Model", thinkerLabel: "Stage 2 · Thinker Model",
+    ollamaLocal: "Ollama Local",
+    startAnalysis: "Start Analysis", running: "Running...",
+    stages: ["🧹 Scrape & Filter", "📖 LLM Reading", "🧠 Deep Report", "✅ Done"],
+    noRun: "Not started — go to Config, fill in parameters, and click \"Start Analysis\"",
+    retryConfig: "Back to Config", viewGems: "View Gem Comments", viewReport: "View Report",
+    copied: "Copied", copy: "Copy", copyTitle: "Copy to clipboard",
+    gemsEmpty: "Gem comments will appear after Stage 1 completes", reportEmpty: "Deep report will appear after Stage 2 completes",
+    connError: "Connection lost. Please check if the backend is running.", reqFail: "Request failed",
+    openSource: "Open Source",  license: "CC BY-NC 4.0 — Non-commercial",
+    presets: {
+      gemini:   { name: "Google Gemini ($300 free)", desc: "Generous free tier, great quality" },
+      deepseek: { name: "DeepSeek (Best value)",    desc: "~¥0.3/run, top Chinese model" },
+      openai:   { name: "OpenAI GPT-5.4",           desc: "Latest flagship, ~$0.5/run" },
+      claude:   { name: "Claude 4.6",                desc: "Anthropic, ~$0.8/run" },
+      local:    { name: "Fully Local (Free)",        desc: "Requires Ollama + GPU" },
+      hybrid:   { name: "Hybrid (Local + API)",      desc: "Local reader + API reporter" },
+    },
+  },
+};
+
 const PRESETS = {
   gemini: {
-    name: "Google Gemini（有$300赠金）",
-    desc: "免费额度充裕，效果好",
     reader:  { provider: "openai_compatible", model: "gemini-3.1-flash-lite-preview", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", apiKey: "" },
     thinker: { provider: "openai_compatible", model: "gemini-3.1-pro-preview",        baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", apiKey: "" },
   },
   deepseek: {
-    name: "DeepSeek（性价比之王）",
-    desc: "约 ¥0.3/次，国产最强",
     reader:  { provider: "openai_compatible", model: "deepseek-chat",     baseUrl: "https://api.deepseek.com", apiKey: "" },
     thinker: { provider: "openai_compatible", model: "deepseek-reasoner", baseUrl: "https://api.deepseek.com", apiKey: "" },
   },
   openai: {
-    name: "OpenAI GPT-5.4",
-    desc: "最新旗舰，约 $0.5/次",
     reader:  { provider: "openai_compatible", model: "gpt-5.4-mini", baseUrl: "https://api.openai.com", apiKey: "" },
     thinker: { provider: "openai_compatible", model: "gpt-5.4",      baseUrl: "https://api.openai.com", apiKey: "" },
   },
   claude: {
-    name: "Claude 4.6",
-    desc: "Anthropic，约 $0.8/次",
     reader:  { provider: "openai_compatible", model: "claude-haiku-4-5-20251001", baseUrl: "https://api.anthropic.com", apiKey: "" },
     thinker: { provider: "openai_compatible", model: "claude-sonnet-4-6",         baseUrl: "https://api.anthropic.com", apiKey: "" },
   },
   local: {
-    name: "全本地（零成本）",
-    desc: "需要 Ollama + GPU",
     reader:  { provider: "ollama", model: "qwen2.5:14b", baseUrl: "http://localhost:11434", apiKey: "" },
     thinker: { provider: "ollama", model: "qwq:32b",     baseUrl: "http://localhost:11434", apiKey: "" },
   },
   hybrid: {
-    name: "混搭（本地+API）",
-    desc: "本地精读 + API 写报告",
     reader:  { provider: "ollama",            model: "qwen2.5:14b",      baseUrl: "http://localhost:11434",    apiKey: "" },
     thinker: { provider: "openai_compatible", model: "deepseek-reasoner", baseUrl: "https://api.deepseek.com", apiKey: "" },
   },
@@ -50,78 +102,61 @@ const Diamond = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="curr
 const Eye     = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
 const Copy    = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>;
 const Retry   = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>;
+const LangIcon = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 const now = () => new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
 const STORAGE_KEY = "commentminer_config";
-const KEYS_STORAGE = "commentminer_apikeys"; // baseUrl → apiKey 映射
+const KEYS_STORAGE = "commentminer_apikeys";
+const LANG_KEY = "commentminer_lang";
 
 function loadSaved() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
+  try { const raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
 }
-
 function saveConfig(data) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch {}
 }
-
-// 记住每个平台的 API Key（按 baseUrl 存）
 function loadKeyMap() {
-  try {
-    const raw = localStorage.getItem(KEYS_STORAGE);
-    return raw ? JSON.parse(raw) : {};
-  } catch { return {}; }
+  try { const raw = localStorage.getItem(KEYS_STORAGE); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
 }
-
 function saveKey(baseUrl, apiKey) {
   if (!baseUrl) return;
-  try {
-    const map = loadKeyMap();
-    if (apiKey) map[baseUrl] = apiKey;
-    else delete map[baseUrl];
-    localStorage.setItem(KEYS_STORAGE, JSON.stringify(map));
-  } catch {}
+  try { const map = loadKeyMap(); if (apiKey) map[baseUrl] = apiKey; else delete map[baseUrl]; localStorage.setItem(KEYS_STORAGE, JSON.stringify(map)); } catch {}
 }
+function getKey(baseUrl) { return loadKeyMap()[baseUrl] || ""; }
 
-function getKey(baseUrl) {
-  return loadKeyMap()[baseUrl] || "";
+function loadLang() {
+  try { return localStorage.getItem(LANG_KEY) || "zh"; } catch { return "zh"; }
 }
 
 function currentStage(logs) {
   for (let i = logs.length - 1; i >= 0; i--) {
     const m = logs[i].msg;
-    if (m.includes("Pipeline 完成") || m.includes("✅")) return 3;
-    if (m.includes("Stage 2") || m.includes("思考模型"))  return 2;
-    if (m.includes("Stage 1") || m.includes("精读"))      return 1;
-    if (m.includes("Stage 0") || m.includes("采集"))      return 0;
+    if (m.includes("Pipeline 完成") || m.includes("Pipeline complete") || m.includes("✅")) return 3;
+    if (m.includes("Stage 2")) return 2;
+    if (m.includes("Stage 1")) return 1;
+    if (m.includes("Stage 0")) return 0;
   }
   return -1;
 }
 
 function isValidUrl(url) {
-  // YouTube
   if (/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)[A-Za-z0-9_-]{11}/.test(url)) return "youtube";
-  // B站（完整链接或 b23.tv 短链接）
   if (/bilibili\.com\/video\/BV/.test(url) || /b23\.tv\//.test(url)) return "bilibili";
   return null;
-}
-
-function isYouTubeUrl(url) {
-  return isValidUrl(url) === "youtube";
 }
 
 // ── App ────────────────────────────────────────────────────────────────────
 const _saved = loadSaved();
 
 export default function App() {
-  const [tab, setTab]         = useState("config");
-  const [preset, setPreset]   = useState(_saved?.preset || "gemini");
-  const [reader,  setReader]  = useState(_saved?.reader  || { ...PRESETS.gemini.reader });
-  const [thinker, setThinker] = useState(_saved?.thinker || { ...PRESETS.gemini.thinker });
-  const [ytKey, setYtKey]     = useState(_saved?.ytKey || getKey("__youtube__") || "");
+  const [lang, setLang]         = useState(loadLang);
+  const [tab, setTab]           = useState("config");
+  const [preset, setPreset]     = useState(_saved?.preset || "gemini");
+  const [reader, setReader]     = useState(_saved?.reader  || { ...PRESETS.gemini.reader });
+  const [thinker, setThinker]   = useState(_saved?.thinker || { ...PRESETS.gemini.thinker });
+  const [ytKey, setYtKey]       = useState(_saved?.ytKey || getKey("__youtube__") || "");
   const [biliSess, setBiliSess] = useState(_saved?.biliSess || getKey("__bilibili_sessdata__") || "");
 
   const [videoUrl,   setUrl]   = useState("");
@@ -139,8 +174,14 @@ export default function App() {
 
   const logRef = useRef(null);
   const esRef  = useRef(null);
+  const t = T[lang];
 
-  // 切换预设时：换模型和 URL，但自动填入之前保存过的 API Key
+  const toggleLang = () => {
+    const next = lang === "zh" ? "en" : "zh";
+    setLang(next);
+    try { localStorage.setItem(LANG_KEY, next); } catch {}
+  };
+
   useEffect(() => {
     const p = PRESETS[preset];
     if (!p) return;
@@ -148,12 +189,10 @@ export default function App() {
     setThinker({ ...p.thinker, apiKey: getKey(p.thinker.baseUrl) });
   }, [preset]);
 
-  // 自动保存配置到 localStorage
   useEffect(() => {
     saveConfig({ preset, reader, thinker, ytKey, biliSess, maxCmt });
   }, [preset, reader, thinker, ytKey, biliSess, maxCmt]);
 
-  // API Key 变化时，按 baseUrl 记住
   useEffect(() => {
     if (reader.apiKey)  saveKey(reader.baseUrl, reader.apiKey);
     if (thinker.apiKey) saveKey(thinker.baseUrl, thinker.apiKey);
@@ -165,36 +204,24 @@ export default function App() {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [logs]);
 
-  // Cleanup EventSource on unmount
   useEffect(() => {
     return () => { if (esRef.current) esRef.current.close(); };
   }, []);
 
   const handleUrlChange = (val) => {
     setUrl(val);
-    if (val.trim() && !isValidUrl(val.trim())) {
-      setUrlErr("请输入 YouTube 或 B站 视频链接");
-    } else {
-      setUrlErr("");
-    }
+    setUrlErr(val.trim() && !isValidUrl(val.trim()) ? t.urlError : "");
   };
 
   const copyToClipboard = useCallback(async (text, label) => {
     try {
       await navigator.clipboard.writeText(text);
-      setCopied(label);
-      setTimeout(() => setCopied(""), 2000);
     } catch {
-      // fallback
       const ta = document.createElement("textarea");
-      ta.value = text;
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      document.body.removeChild(ta);
-      setCopied(label);
-      setTimeout(() => setCopied(""), 2000);
+      ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta);
     }
+    setCopied(label);
+    setTimeout(() => setCopied(""), 2000);
   }, []);
 
   const runPipeline = async () => {
@@ -208,20 +235,13 @@ export default function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          video_url:    url,
-          video_title:  videoTitle,
-          video_brief:  videoBrief,
-          max_comments: maxCmt,
-          bilibili_sessdata: biliSess,
-          reader:  { ...reader,  youtube_api_key: ytKey },
-          thinker: { ...thinker },
+          video_url: url, video_title: videoTitle, video_brief: videoBrief,
+          max_comments: maxCmt, bilibili_sessdata: biliSess,
+          reader: { ...reader, youtube_api_key: ytKey }, thinker: { ...thinker },
         }),
       });
 
-      if (!res.ok) {
-        const detail = await res.text();
-        throw new Error(`HTTP ${res.status}: ${detail}`);
-      }
+      if (!res.ok) { const detail = await res.text(); throw new Error(`HTTP ${res.status}: ${detail}`); }
       const { job_id } = await res.json();
 
       if (esRef.current) esRef.current.close();
@@ -231,9 +251,7 @@ export default function App() {
       es.onmessage = async (e) => {
         const data = JSON.parse(e.data);
         if (data.type === "end") {
-          es.close();
-          esRef.current = null;
-          setRunning(false);
+          es.close(); esRef.current = null; setRunning(false);
           const st = await fetch(`/api/status/${job_id}`).then(r => r.json());
           const vid = st.video_id;
           setVid(vid);
@@ -242,30 +260,25 @@ export default function App() {
               fetch(`/api/gems/${vid}`).then(x => x.ok ? x.json() : null),
               fetch(`/api/report/${vid}`).then(x => x.ok ? x.json() : null),
             ]);
-            if (g) setGems(g.content);
-            if (r) setReport(r.content);
+            if (g?.content) setGems(g.content);
+            if (r?.content) setReport(r.content);
           }
           return;
         }
         setLogs(prev => [...prev, { ...data, time: now() }]);
       };
       es.onerror = () => {
-        es.close();
-        esRef.current = null;
-        setRunning(false);
-        setLogs(prev => [...prev, { msg: "❌ 连接中断，请检查后端是否正常运行", type: "error", time: now() }]);
+        es.close(); esRef.current = null; setRunning(false);
+        setLogs(prev => [...prev, { msg: `❌ ${t.connError}`, type: "error", time: now() }]);
       };
     } catch (err) {
-      setLogs(prev => [...prev, { msg: `❌ 请求失败: ${err.message}`, type: "error", time: now() }]);
+      setLogs(prev => [...prev, { msg: `❌ ${t.reqFail}: ${err.message}`, type: "error", time: now() }]);
       setRunning(false);
     }
   };
 
   const stage = currentStage(logs);
-  const progress = running
-    ? Math.min(90, Math.max(5, stage * 28 + 12))
-    : (stage >= 3 ? 100 : (logs.length > 0 ? 5 : 0));
-
+  const progress = running ? Math.min(90, Math.max(5, stage * 28 + 12)) : (stage >= 3 ? 100 : (logs.length > 0 ? 5 : 0));
   const canRun = videoUrl.trim() && isValidUrl(videoUrl.trim()) && !running;
 
   // ── Sub-components ─────────────────────────────────────────────────────
@@ -281,7 +294,7 @@ export default function App() {
       <div style={S.cardHead}>{icon} <span style={{ fontWeight: 600 }}>{label}</span></div>
       <Field label="Provider">
         <div style={{ display: "flex", gap: 6 }}>
-          {[["ollama", <Cpu key="cpu" />, "Ollama 本地"], ["openai_compatible", <Cloud key="cloud" />, "API"]].map(([v, ic, l]) => (
+          {[["ollama", <Cpu key="cpu" />, t.ollamaLocal], ["openai_compatible", <Cloud key="cloud" />, "API"]].map(([v, ic, l]) => (
             <button key={v} onClick={() => setCfg(c => ({ ...c, provider: v }))}
               style={{ ...S.toggleBtn, ...(cfg.provider === v ? S.toggleOn : {}) }}>
               {ic}<span style={{ marginLeft: 5 }}>{l}</span>
@@ -291,8 +304,7 @@ export default function App() {
       </Field>
       <Field label="Model">
         <input style={S.input} value={cfg.model}
-          onChange={e => setCfg(c => ({ ...c, model: e.target.value }))}
-          placeholder="e.g. qwen2.5:14b" />
+          onChange={e => setCfg(c => ({ ...c, model: e.target.value }))} placeholder="e.g. qwen2.5:14b" />
       </Field>
       <Field label="Base URL">
         <input style={S.input} value={cfg.baseUrl}
@@ -301,20 +313,16 @@ export default function App() {
       {cfg.provider === "openai_compatible" && (
         <Field label="API Key">
           <input style={S.input} type="password" value={cfg.apiKey}
-            onChange={e => setCfg(c => ({ ...c, apiKey: e.target.value }))}
-            placeholder="sk-..." />
+            onChange={e => setCfg(c => ({ ...c, apiKey: e.target.value }))} placeholder="sk-..." />
         </Field>
       )}
     </div>
   );
 
   const CopyBtn = ({ text, label }) => (
-    <button
-      style={{ ...S.ghostBtn, ...(copied === label ? { color: "#34d399", borderColor: "#34d399" } : {}) }}
-      onClick={() => copyToClipboard(text, label)}
-      title="复制到剪贴板"
-    >
-      {copied === label ? <><Check /> &nbsp;已复制</> : <><Copy /> &nbsp;复制</>}
+    <button style={{ ...S.ghostBtn, ...(copied === label ? { color: "#34d399", borderColor: "#34d399" } : {}) }}
+      onClick={() => copyToClipboard(text, label)} title={t.copyTitle}>
+      {copied === label ? <><Check /> &nbsp;{t.copied}</> : <><Copy /> &nbsp;{t.copy}</>}
     </button>
   );
 
@@ -325,14 +333,20 @@ export default function App() {
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Diamond />
           <span style={{ fontWeight: 700, fontSize: 16 }}>CommentMiner</span>
-          <span style={S.badge}>v0.2</span>
+          <span style={S.badge}>v0.3</span>
         </div>
-        <nav style={{ display: "flex", gap: 4 }}>
-          {[["config","⚙ 配置"],["pipeline","▶ Pipeline"],["gems","💎 精华"],["report","📊 报告"]].map(([k,l]) => (
-            <button key={k} onClick={() => setTab(k)}
-              style={{ ...S.navBtn, ...(tab === k ? S.navOn : {}) }}>{l}</button>
-          ))}
-        </nav>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <nav style={{ display: "flex", gap: 4 }}>
+            {[["config", t.config], ["pipeline", t.pipeline], ["gems", t.gems], ["report", t.report]].map(([k, l]) => (
+              <button key={k} onClick={() => setTab(k)}
+                style={{ ...S.navBtn, ...(tab === k ? S.navOn : {}) }}>{l}</button>
+            ))}
+          </nav>
+          <button onClick={toggleLang} style={{ ...S.navBtn, marginLeft: 8, display: "flex", alignItems: "center", gap: 4 }}
+            title={lang === "zh" ? "Switch to English" : "切换到中文"}>
+            <LangIcon /><span style={{ fontSize: 12 }}>{lang === "zh" ? "EN" : "中"}</span>
+          </button>
+        </div>
       </header>
 
       <main style={S.main}>
@@ -341,67 +355,62 @@ export default function App() {
         {tab === "config" && (
           <div>
             <section style={{ marginBottom: 28 }}>
-              <h2 style={S.sec}>视频信息</h2>
-              <Field label="视频 URL *">
+              <h2 style={S.sec}>{t.videoInfo}</h2>
+              <Field label={t.videoUrl}>
                 <input style={{ ...S.input, ...(urlError ? { borderColor: "#f87171" } : {}) }}
-                  value={videoUrl} onChange={e => handleUrlChange(e.target.value)}
-                  placeholder="YouTube 或 B站链接，如 https://www.bilibili.com/video/BV..." />
+                  value={videoUrl} onChange={e => handleUrlChange(e.target.value)} placeholder={t.videoUrlPh} />
                 {urlError && <div style={{ color: "#f87171", fontSize: 11, marginTop: 4 }}>{urlError}</div>}
               </Field>
-              <Field label="视频标题（可选，帮助 LLM 理解主题）">
-                <input style={S.input} value={videoTitle} onChange={e => setTitle(e.target.value)}
-                  placeholder="例如：一加13T 深度评测" />
+              <Field label={t.videoTitle}>
+                <input style={S.input} value={videoTitle} onChange={e => setTitle(e.target.value)} placeholder={t.videoTitlePh} />
               </Field>
-              <Field label="视频简介（可选）">
+              <Field label={t.videoBrief}>
                 <textarea style={{ ...S.input, height: 56, resize: "vertical" }}
-                  value={videoBrief} onChange={e => setBrief(e.target.value)}
-                  placeholder="简要描述视频核心内容..." />
+                  value={videoBrief} onChange={e => setBrief(e.target.value)} placeholder={t.videoBriefPh} />
               </Field>
-              <Field label="YouTube API Key（仅 YouTube 需要，B站无需填写）">
-                <input style={S.input} type="password" value={ytKey}
-                  onChange={e => setYtKey(e.target.value)} placeholder="AIza..." />
+              <Field label={t.ytKey}>
+                <input style={S.input} type="password" value={ytKey} onChange={e => setYtKey(e.target.value)} placeholder="AIza..." />
               </Field>
-              <Field label="B站 SESSDATA Cookie（可选，提高B站采集稳定性）">
-                <input style={S.input} type="password" value={biliSess}
-                  onChange={e => setBiliSess(e.target.value)}
-                  placeholder="填入后可避免反爬拦截" />
-                <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>
-                  获取方式：浏览器登录 B站 → F12 → Application → Cookies → bilibili.com → 复制 SESSDATA 的值
-                </div>
+              <Field label={t.biliSess}>
+                <input style={S.input} type="password" value={biliSess} onChange={e => setBiliSess(e.target.value)} placeholder={t.biliSessPh} />
+                <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>{t.biliSessHelp}</div>
               </Field>
-              <Field label={`最大采集评论数：${maxCmt.toLocaleString()}`}>
+              <Field label={t.maxComments(maxCmt)}>
                 <input type="range" min={500} max={10000} step={500} value={maxCmt}
                   onChange={e => setMax(Number(e.target.value))} style={{ width: "100%", accentColor: "#6366f1" }} />
               </Field>
             </section>
 
             <section style={{ marginBottom: 28 }}>
-              <h2 style={S.sec}>模型方案</h2>
+              <h2 style={S.sec}>{t.modelPreset}</h2>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-                {Object.entries(PRESETS).map(([k, p]) => (
-                  <button key={k} onClick={() => setPreset(k)}
-                    style={{ ...S.presetCard, ...(preset === k ? S.presetOn : {}) }}>
-                    {preset === k && <span style={{ position: "absolute", top: 8, right: 8, color: "#6366f1" }}><Check /></span>}
-                    <div style={{ fontWeight: 600, marginBottom: 2, fontSize: 13 }}>{p.name}</div>
-                    {p.desc && <div style={{ fontSize: 11, color: "#475569", marginBottom: 6 }}>{p.desc}</div>}
-                    <div style={S.presetRow}><Eye /> {p.reader.model}</div>
-                    <div style={S.presetRow}><Cloud /> {p.thinker.model}</div>
-                  </button>
-                ))}
+                {Object.entries(PRESETS).map(([k, p]) => {
+                  const pi = t.presets[k];
+                  return (
+                    <button key={k} onClick={() => setPreset(k)}
+                      style={{ ...S.presetCard, ...(preset === k ? S.presetOn : {}) }}>
+                      {preset === k && <span style={{ position: "absolute", top: 8, right: 8, color: "#6366f1" }}><Check /></span>}
+                      <div style={{ fontWeight: 600, marginBottom: 2, fontSize: 13 }}>{pi.name}</div>
+                      {pi.desc && <div style={{ fontSize: 11, color: "#475569", marginBottom: 6 }}>{pi.desc}</div>}
+                      <div style={S.presetRow}><Eye /> {p.reader.model}</div>
+                      <div style={S.presetRow}><Cloud /> {p.thinker.model}</div>
+                    </button>
+                  );
+                })}
               </div>
             </section>
 
             <section style={{ marginBottom: 28 }}>
-              <h2 style={S.sec}>模型配置</h2>
+              <h2 style={S.sec}>{t.modelConfig}</h2>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                <ModelCard label="Stage 1 · 精读模型" cfg={reader}  setCfg={setReader}  icon="📖" />
-                <ModelCard label="Stage 2 · 思考模型" cfg={thinker} setCfg={setThinker} icon="🧠" />
+                <ModelCard label={t.readerLabel} cfg={reader} setCfg={setReader} icon="📖" />
+                <ModelCard label={t.thinkerLabel} cfg={thinker} setCfg={setThinker} icon="🧠" />
               </div>
             </section>
 
             <button onClick={runPipeline} disabled={!canRun}
               style={{ ...S.runBtn, ...(!canRun ? { opacity: 0.4, cursor: "not-allowed" } : {}) }}>
-              <Play /><span style={{ marginLeft: 8 }}>开始分析</span>
+              <Play /><span style={{ marginLeft: 8 }}>{t.startAnalysis}</span>
             </button>
           </div>
         )}
@@ -413,13 +422,13 @@ export default function App() {
               <div style={{ ...S.progressBar, width: `${progress}%` }} />
             </div>
             <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
-              {["🧹 采集&硬筛", "📖 LLM精读", "🧠 思考报告", "✅ 完成"].map((l, i) => (
+              {t.stages.map((l, i) => (
                 <div key={i} style={{ ...S.stageChip, ...(stage >= i ? S.stageOn : {}) }}>{l}</div>
               ))}
             </div>
             <div ref={logRef} style={S.logBox}>
               {logs.length === 0 && !running && (
-                <div style={{ color: "#475569", padding: "20px 0" }}>尚未运行 — 去配置页填参数后点「开始分析」</div>
+                <div style={{ color: "#475569", padding: "20px 0" }}>{t.noRun}</div>
               )}
               {logs.map((l, i) => (
                 <div key={i} style={{ ...S.logLine, color: logColor(l.type) }}>
@@ -428,18 +437,18 @@ export default function App() {
                 </div>
               ))}
               {running && <div style={{ ...S.logLine, color: "#6366f1" }}>
-                <span style={S.spinner} /> 运行中...
+                <span style={S.spinner} /> {t.running}
               </div>}
             </div>
             {!running && logs.length > 0 && stage < 3 && (
               <button style={{ ...S.ghostBtn, marginTop: 14 }} onClick={() => setTab("config")}>
-                <Retry /> &nbsp;返回配置重试
+                <Retry /> &nbsp;{t.retryConfig}
               </button>
             )}
             {(gems || report) && (
               <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-                {gems   && <button style={S.ghostBtn} onClick={() => setTab("gems")}><Eye /> &nbsp;查看精华评论</button>}
-                {report && <button style={S.ghostBtn} onClick={() => setTab("report")}><Eye /> &nbsp;查看分析报告</button>}
+                {gems   && <button style={S.ghostBtn} onClick={() => setTab("gems")}><Eye /> &nbsp;{t.viewGems}</button>}
+                {report && <button style={S.ghostBtn} onClick={() => setTab("report")}><Eye /> &nbsp;{t.viewReport}</button>}
               </div>
             )}
           </div>
@@ -457,7 +466,7 @@ export default function App() {
               </div>
             </div>
           ) : (
-            <Empty icon="💎" text="精华评论将在 Stage 1 完成后出现" />
+            <Empty icon="💎" text={t.gemsEmpty} />
           )
         )}
 
@@ -473,7 +482,7 @@ export default function App() {
               </div>
             </div>
           ) : (
-            <Empty icon="📊" text="深度报告将在 Stage 2 完成后出现" />
+            <Empty icon="📊" text={t.reportEmpty} />
           )
         )}
       </main>
@@ -481,11 +490,11 @@ export default function App() {
       <footer style={S.footer}>
         <span>Made by <strong>Raelon</strong></span>
         <span style={S.footerDot} />
-        <span>开源免费</span>
+        <span>{t.openSource}</span>
         <span style={S.footerDot} />
         <a href="https://github.com/roclee2692/comment-miner" target="_blank" rel="noreferrer" style={S.footerLink}>GitHub</a>
         <span style={S.footerDot} />
-        <span style={{ color: "#475569" }}>CC BY-NC 4.0 — 禁止商用</span>
+        <span style={{ color: "#475569" }}>{t.license}</span>
       </footer>
     </div>
   );

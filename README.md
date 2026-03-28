@@ -1,4 +1,6 @@
-# 视频评论深度洞察系统 (Comment Miner)
+[English](README_EN.md) | 中文
+
+# 视频评论深度洞察系统 (CommentMiner)
 
 > 三阶段 Pipeline：**规则硬筛** → **LLM 精读** → **思考模型写深度报告**
 
@@ -99,7 +101,7 @@ comment-miner/
 ├── scrapers/
 │   ├── base.py             # Comment 数据结构
 │   ├── youtube.py          # YouTube Data API 采集
-│   ├── bilibili.py         # B站评论 API 采集
+│   ├── bilibili.py         # B站评论 API 采集（Wbi 签名）
 │   └── factory.py          # URL → 自动选 scraper
 │
 ├── stage0_prefilter.py     # 规则硬筛
@@ -107,13 +109,13 @@ comment-miner/
 ├── stage2_report.py        # 思考模型 → report.md
 │
 ├── llm/
-│   └── client.py           # 统一 LLM 客户端
+│   └── client.py           # 统一 LLM 客户端（自动重试）
 │
 ├── prompts/
 │   ├── reader.txt          # Stage 1 精读 prompt
 │   └── reporter.txt        # Stage 2 报告 prompt
 │
-└── frontend/               # React Web UI
+└── frontend/               # React Web UI（支持中英切换）
     ├── src/App.jsx          # 主界面组件
     └── dist/                # 预构建产物（server.py 直接 serve）
 ```

@@ -29,7 +29,12 @@ class YouTubeScraper:
             if page_token:
                 params["pageToken"] = page_token
 
-            resp = requests.get(f"{self.API_BASE}/commentThreads", params=params, timeout=30)
+            try:
+                resp = requests.get(f"{self.API_BASE}/commentThreads", params=params, timeout=30)
+            except requests.ConnectionError:
+                raise ConnectionError("无法连接 YouTube API，请检查网络")
+            except requests.Timeout:
+                raise TimeoutError("YouTube API 请求超时")
 
             if resp.status_code == 403:
                 error_detail = resp.json().get("error", {}).get("message", resp.text[:200])

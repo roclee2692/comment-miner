@@ -76,7 +76,7 @@ class LLMReader:
     def _append_gems(self, llm_response: str, batch_idx: int):
         response = llm_response.strip()
         # PASS ALL: only if the response is essentially just "PASS ALL" (not embedded in longer text)
-        if response == "PASS ALL" or response.startswith("PASS ALL") and len(response) < 30:
+        if response == "PASS ALL" or (response.startswith("PASS ALL") and len(response) < 30):
             with open(self.gems_path, "a", encoding="utf-8") as f:
                 f.write(f"<!-- Batch {batch_idx + 1}: PASS ALL -->\n")
             return
@@ -103,5 +103,5 @@ class LLMReader:
         batches = re.findall(r"<!-- Batch (\d+)", content)
         if batches:
             self.kept_count = content.count("KEEP #")
-            return int(batches[-1])  # continue from next batch
+            return int(batches[-1])  # Batch 标记用的是 1-based，恰好等于下一批的 0-based index
         return 0

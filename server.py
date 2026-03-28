@@ -11,6 +11,7 @@ Endpoints:
 
 import asyncio
 import json
+import re
 import time
 import traceback
 import uuid
@@ -23,7 +24,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from scrapers.factory import create_scraper
 from stage0_prefilter import prefilter
@@ -45,6 +46,9 @@ _jobs: dict[str, dict] = {}  # job_id → {status, logs, video_id, created_at}
 _jobs_lock = Lock()
 MAX_JOBS = 100
 
+# video_id 只允许安全字符，防止路径穿越
+_SAFE_ID = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
+
 
 class RunRequest(BaseModel):
     video_url: str
@@ -55,17 +59,20 @@ class RunRequest(BaseModel):
     reader: dict
     thinker: dict
 
+    @field_validator("max_comments")
+    @classmethod
+    def clamp_max_comments(cls, v: int) -> int:
+        return max(100, min(v, 20000))
+
 
 @app.post("/api/run")
 async def run_pipeline(req: RunRequest):
     job_id = uuid.uuid4().hex[:8]
     with _jobs_lock:
-        # Cleanup old jobs if exceeding limit
         if len(_jobs) >= MAX_JOBS:
             _cleanup_old_jobs()
         _jobs[job_id] = {"status": "running", "logs": [], "video_id": None, "created_at": time.time()}
 
-    # Run in background thread (LLM calls are blocking)
     thread = Thread(target=_run_job, args=(job_id, req), daemon=True)
     thread.start()
     return {"job_id": job_id}
@@ -94,8 +101,15 @@ async def get_status(job_id: str):
     return {"status": job["status"], "video_id": job.get("video_id")}
 
 
+def _validate_video_id(video_id: str):
+    """防止路径穿越攻击"""
+    if not _SAFE_ID.match(video_id):
+        raise HTTPException(status_code=400, detail="Invalid video_id")
+
+
 @app.get("/api/gems/{video_id}")
 async def get_gems(video_id: str):
+    _validate_video_id(video_id)
     path = Path(f"data/gems_{video_id}.md")
     if not path.exists():
         raise HTTPException(status_code=404, detail="gems.md not found")
@@ -104,6 +118,7 @@ async def get_gems(video_id: str):
 
 @app.get("/api/report/{video_id}")
 async def get_report(video_id: str):
+    _validate_video_id(video_id)
     path = Path(f"reports/{video_id}_report.md")
     if not path.exists():
         raise HTTPException(status_code=404, detail="report.md not found")
@@ -119,7 +134,8 @@ def _push(job_id: str, msg: str, type_: str = "info"):
 
 
 def _cleanup_old_jobs():
-    """Remove oldest finished jobs when store exceeds MAX_JOBS."""
+    """Remove oldest finished jobs when store exceeds MAX_JOBS.
+    Must be called while holding _jobs_lock."""
     finished = [
         (jid, j) for jid, j in _jobs.items()
         if j["status"] in ("done", "error")
@@ -130,27 +146,26 @@ def _cleanup_old_jobs():
 
 
 def _run_job(job_id: str, req: RunRequest):
-    job = _jobs[job_id]
     try:
         _push(job_id, "📥 Stage 0: 采集评论...", "stage")
 
         # Build a minimal config dict for the scraper
-        config = {
-            "youtube": {},  # api_key comes from reader config or env
+        config: dict = {
+            "youtube": {},
             "bilibili": {},
             "max_comments": req.max_comments,
         }
-        # Allow passing YouTube API key via reader config's extra field
         if req.reader.get("youtube_api_key"):
             config["youtube"]["api_key"] = req.reader["youtube_api_key"]
         else:
-            # Fall back to config.yaml if it exists
             cfg_path = Path("config.yaml")
             if cfg_path.exists():
-                saved = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
-                config["youtube"] = saved.get("youtube", {})
+                try:
+                    saved = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+                    config["youtube"] = saved.get("youtube", {})
+                except Exception:
+                    pass
 
-        # B站 SESSDATA Cookie
         if req.bilibili_sessdata:
             config["bilibili"]["sessdata"] = req.bilibili_sessdata
 
@@ -160,7 +175,8 @@ def _run_job(job_id: str, req: RunRequest):
 
         if not raw:
             _push(job_id, "⚠️ 未抓取到任何评论（视频可能关闭了评论或 API Key 无效）", "error")
-            job["status"] = "error"
+            with _jobs_lock:
+                _jobs[job_id]["status"] = "error"
             return
 
         _push(job_id, "🧹 硬筛去垃圾...", "stage")
@@ -170,7 +186,8 @@ def _run_job(job_id: str, req: RunRequest):
 
         if not filtered:
             _push(job_id, "⚠️ 硬筛后无剩余评论（全部为垃圾内容）", "error")
-            job["status"] = "error"
+            with _jobs_lock:
+                _jobs[job_id]["status"] = "error"
             return
 
         video_context = {
@@ -178,7 +195,8 @@ def _run_job(job_id: str, req: RunRequest):
             "title": req.video_title or req.video_url,
             "brief": req.video_brief,
         }
-        job["video_id"] = scraper.video_id
+        with _jobs_lock:
+            _jobs[job_id]["video_id"] = scraper.video_id
 
         # Stage 1
         _push(job_id, f"📖 Stage 1: LLM 精读 ({req.reader.get('model', '?')})...", "stage")
@@ -192,7 +210,6 @@ def _run_job(job_id: str, req: RunRequest):
         }
         reader_llm = LLMClient(reader_cfg)
 
-        # Wrap LLMReader to emit logs per batch
         class LoggingReader(LLMReader):
             def _append_gems(self, llm_response, batch_idx):
                 super()._append_gems(llm_response, batch_idx)
@@ -219,12 +236,14 @@ def _run_job(job_id: str, req: RunRequest):
         _push(job_id, f"   ✓ 报告已生成: {report_path}", "success")
 
         _push(job_id, "✅ Pipeline 完成", "done")
-        job["status"] = "done"
+        with _jobs_lock:
+            _jobs[job_id]["status"] = "done"
 
     except Exception as e:
         _push(job_id, f"❌ 错误: {e}", "error")
         _push(job_id, traceback.format_exc(), "error")
-        job["status"] = "error"
+        with _jobs_lock:
+            _jobs[job_id]["status"] = "error"
 
 
 async def _event_generator(job_id: str) -> AsyncGenerator[str, None]:

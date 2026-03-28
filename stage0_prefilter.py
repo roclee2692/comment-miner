@@ -15,7 +15,7 @@ def prefilter(comments: list[Comment]) -> list[Comment]:
     result = []
 
     for c in comments:
-        text = c.text.strip()
+        text = (c.text or "").strip()
 
         # 1. 太短
         if len(text) < 15:
