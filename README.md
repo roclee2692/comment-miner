@@ -120,4 +120,6 @@ comment-miner/
 
 ## License
 
-MIT
+[CC BY-NC 4.0](LICENSE) — 个人免费使用、修改、分享，**禁止商业用途**。
+
+Made by **Raelon**

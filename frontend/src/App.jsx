@@ -466,6 +466,16 @@ export default function App() {
           )
         )}
       </main>
+
+      <footer style={S.footer}>
+        <span>Made by <strong>Raelon</strong></span>
+        <span style={S.footerDot} />
+        <span>开源免费</span>
+        <span style={S.footerDot} />
+        <a href="https://github.com/roclee2692/comment-miner" target="_blank" rel="noreferrer" style={S.footerLink}>GitHub</a>
+        <span style={S.footerDot} />
+        <span style={{ color: "#475569" }}>CC BY-NC 4.0 — 禁止商用</span>
+      </footer>
     </div>
   );
 }
@@ -510,4 +520,7 @@ const S = {
   ghostBtn:    { display: "flex", alignItems: "center", gap: 6, background: "#141929", border: "1px solid #1e2435", borderRadius: 6, color: "#64748b", cursor: "pointer", padding: "7px 14px", fontSize: 12 },
   mdBox:       { background: "#080b12", border: "1px solid #1e2435", borderRadius: 8, padding: "18px 24px", overflowY: "auto", maxHeight: "calc(100vh - 180px)", color: "#cbd5e1", lineHeight: 1.8 },
   spinner:     { display: "inline-block", width: 12, height: 12, border: "2px solid #6366f1", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" },
+  footer:      { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "18px 24px", borderTop: "1px solid #1e2435", color: "#64748b", fontSize: 12 },
+  footerDot:   { width: 3, height: 3, borderRadius: "50%", background: "#2a3a54" },
+  footerLink:  { color: "#6366f1", textDecoration: "none" },
 };
