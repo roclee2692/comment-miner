@@ -11,16 +11,18 @@ Endpoints:
 
 import asyncio
 import json
+import time
 import traceback
 import uuid
 from pathlib import Path
-from threading import Thread
+from threading import Thread, Lock
 from typing import AsyncGenerator
 
 import yaml
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from scrapers.factory import create_scraper
@@ -38,8 +40,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# In-memory job store
-_jobs: dict[str, dict] = {}  # job_id → {status, logs, video_id, config}
+# In-memory job store (thread-safe)
+_jobs: dict[str, dict] = {}  # job_id → {status, logs, video_id, created_at}
+_jobs_lock = Lock()
+MAX_JOBS = 100
 
 
 class RunRequest(BaseModel):
@@ -54,7 +58,11 @@ class RunRequest(BaseModel):
 @app.post("/api/run")
 async def run_pipeline(req: RunRequest):
     job_id = uuid.uuid4().hex[:8]
-    _jobs[job_id] = {"status": "running", "logs": [], "video_id": None}
+    with _jobs_lock:
+        # Cleanup old jobs if exceeding limit
+        if len(_jobs) >= MAX_JOBS:
+            _cleanup_old_jobs()
+        _jobs[job_id] = {"status": "running", "logs": [], "video_id": None, "created_at": time.time()}
 
     # Run in background thread (LLM calls are blocking)
     thread = Thread(target=_run_job, args=(job_id, req), daemon=True)
@@ -104,7 +112,20 @@ async def get_report(video_id: str):
 # ── Internals ──────────────────────────────────────────────────────────────
 
 def _push(job_id: str, msg: str, type_: str = "info"):
-    _jobs[job_id]["logs"].append({"msg": msg, "type": type_})
+    with _jobs_lock:
+        if job_id in _jobs:
+            _jobs[job_id]["logs"].append({"msg": msg, "type": type_})
+
+
+def _cleanup_old_jobs():
+    """Remove oldest finished jobs when store exceeds MAX_JOBS."""
+    finished = [
+        (jid, j) for jid, j in _jobs.items()
+        if j["status"] in ("done", "error")
+    ]
+    finished.sort(key=lambda x: x[1].get("created_at", 0))
+    for jid, _ in finished[:len(finished) // 2]:
+        del _jobs[jid]
 
 
 def _run_job(job_id: str, req: RunRequest):
@@ -131,10 +152,20 @@ def _run_job(job_id: str, req: RunRequest):
         raw = scraper.fetch_comments(req.video_url, max_count=req.max_comments)
         _push(job_id, f"   ✓ 抓取到 {len(raw)} 条原始评论", "success")
 
+        if not raw:
+            _push(job_id, "⚠️ 未抓取到任何评论（视频可能关闭了评论或 API Key 无效）", "error")
+            job["status"] = "error"
+            return
+
         _push(job_id, "🧹 硬筛去垃圾...", "stage")
         filtered = prefilter(raw)
         removed = len(raw) - len(filtered)
         _push(job_id, f"   ✓ 硬筛后剩余 {len(filtered)} 条（去除 {removed} 条垃圾）", "success")
+
+        if not filtered:
+            _push(job_id, "⚠️ 硬筛后无剩余评论（全部为垃圾内容）", "error")
+            job["status"] = "error"
+            return
 
         video_context = {
             "video_id": scraper.video_id,
@@ -208,6 +239,12 @@ async def _event_generator(job_id: str) -> AsyncGenerator[str, None]:
         await asyncio.sleep(0.3)
 
 
+# Serve frontend static files (must be AFTER all /api routes)
+_dist = Path(__file__).parent / "frontend" / "dist"
+if _dist.exists():
+    app.mount("/", StaticFiles(directory=str(_dist), html=True), name="static")
+
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
+    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)

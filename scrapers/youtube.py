@@ -30,19 +30,31 @@ class YouTubeScraper:
                 params["pageToken"] = page_token
 
             resp = requests.get(f"{self.API_BASE}/commentThreads", params=params, timeout=30)
-            resp.raise_for_status()
+
+            if resp.status_code == 403:
+                error_detail = resp.json().get("error", {}).get("message", resp.text[:200])
+                raise RuntimeError(
+                    f"YouTube API 返回 403: {error_detail}\n"
+                    "可能原因：API Key 无效、未启用 YouTube Data API v3、或超出每日配额"
+                )
+            if resp.status_code != 200:
+                raise RuntimeError(f"YouTube API 返回 {resp.status_code}: {resp.text[:200]}")
+
             data = resp.json()
 
             for item in data.get("items", []):
-                snippet = item["snippet"]["topLevelComment"]["snippet"]
-                comments.append(Comment(
-                    text=snippet.get("textDisplay", ""),
-                    author=snippet.get("authorDisplayName", ""),
-                    likes=snippet.get("likeCount", 0),
-                    reply_count=item["snippet"].get("totalReplyCount", 0),
-                    video_id=self._video_id,
-                    comment_id=item["id"],
-                ))
+                try:
+                    snippet = item["snippet"]["topLevelComment"]["snippet"]
+                    comments.append(Comment(
+                        text=snippet.get("textDisplay", ""),
+                        author=snippet.get("authorDisplayName", ""),
+                        likes=snippet.get("likeCount", 0),
+                        reply_count=item["snippet"].get("totalReplyCount", 0),
+                        video_id=self._video_id,
+                        comment_id=item.get("id", ""),
+                    ))
+                except (KeyError, TypeError):
+                    continue
 
             page_token = data.get("nextPageToken")
             if not page_token:

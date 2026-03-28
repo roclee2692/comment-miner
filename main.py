@@ -1,4 +1,6 @@
 import sys
+from pathlib import Path
+
 import yaml
 from scrapers.factory import create_scraper
 from stage0_prefilter import prefilter
@@ -8,7 +10,13 @@ from llm.client import LLMClient
 
 
 def main(video_url: str):
-    config = yaml.safe_load(open("config.yaml", encoding="utf-8"))
+    cfg_path = Path("config.yaml")
+    if not cfg_path.exists():
+        print("❌ 未找到 config.yaml")
+        print("   请先执行: cp config.yaml.example config.yaml")
+        print("   然后编辑 config.yaml 填入 API Key 和 LLM 配置")
+        sys.exit(1)
+    config = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
 
     # Stage 0: 采集 + 硬筛
     print("📥 Scraping comments...")

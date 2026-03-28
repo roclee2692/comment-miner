@@ -2,12 +2,12 @@
 
 > 三阶段 Pipeline：**规则硬筛** → **LLM 精读** → **思考模型写深度报告**
 
-把一个视频的 4000+ 条评论，提炼成一份有洞察力的深度研究报告。
+支持 **YouTube** 和 **B站**，把一个视频的数千条评论提炼成一份有洞察力的深度研究报告。
 
 ## 工作原理
 
 ```
-4000+ 原始评论
+YouTube / B站 评论
       │
       ▼
 ┌─────────────┐
@@ -39,52 +39,67 @@
 pip install -r requirements.txt
 ```
 
-### 2. 配置
+### 2. 启动 Web 界面（推荐）
+
+```bash
+python server.py
+```
+
+浏览器打开 **http://localhost:8000**，粘贴视频链接，选择模型方案，点击「开始分析」。
+
+- **B站视频**：直接粘贴链接即可，无需任何 Key
+- **YouTube 视频**：需要填入 YouTube Data API v3 Key
+
+> 所有配置自动保存到浏览器，填一次即可，刷新不丢失。
+
+### 3. 或使用命令行
 
 ```bash
 cp config.yaml.example config.yaml
-```
+# 编辑 config.yaml，填入 LLM 配置
 
-编辑 `config.yaml`，填入：
-- `youtube.api_key`：[Google Cloud Console](https://console.cloud.google.com/) 获取 YouTube Data API v3 Key
-- `llm.reader` 和 `llm.thinker`：选择你的 LLM 方案（见下方）
+# B站视频（无需 API Key）
+python main.py "https://www.bilibili.com/video/BV1xxxxxxxxx"
 
-### 3. 运行
-
-```bash
+# YouTube 视频（需要在 config.yaml 填入 YouTube API Key）
 python main.py "https://www.youtube.com/watch?v=VIDEO_ID"
 ```
 
-输出：
-- `data/gems_<video_id>.md` — Stage 1 精华评论集
-- `reports/<video_id>_report.md` — Stage 2 深度报告
+> 详细使用说明、全 API 模式配置、常见问题等请参考 **[USAGE.md](USAGE.md)**。
+
+## 支持的平台
+
+| 平台 | 需要 API Key | 说明 |
+|------|-------------|------|
+| **B站** | 不需要 | 使用公开 API，直接粘贴链接 |
+| **YouTube** | 需要 YouTube Data API v3 Key | [获取方式](USAGE.md#youtube-api-key仅分析-youtube-视频时需要) |
 
 ## LLM 方案选择
 
-| 场景 | Stage 1 精读 | Stage 2 报告 | 成本/次 |
+| 方案 | Stage 1 精读 | Stage 2 报告 | 成本/次 |
 |------|-------------|-------------|---------|
-| 纯本地 | Ollama qwen2.5:14b | Ollama qwq:32b | ¥0 |
-| 性价比 | DeepSeek-V3 | DeepSeek-R1 | ~¥0.3 |
-| 质量优先 | Claude Haiku | Claude Sonnet | ~$0.8 |
-| 混搭推荐 | Ollama 本地 | DeepSeek-R1 API | ~¥0.1 |
+| **Google Gemini** | gemini-3.1-flash-lite | gemini-3.1-pro | 有$300赠金 |
+| DeepSeek | deepseek-chat | deepseek-reasoner | ~¥0.3 |
+| OpenAI | gpt-5.4-mini | gpt-5.4 | ~$0.5 |
+| Claude | claude-haiku | claude-sonnet | ~$0.8 |
+| 全本地 | Ollama qwen2.5:14b | Ollama qwq:32b | ¥0 |
 
-详细配置见 `config.yaml.example`。
-
-## 断点恢复
-
-Stage 1 支持断点恢复。如果中途中断，重新运行同一个 URL，会从上次处理的 batch 继续。
+详细配置见 [USAGE.md](USAGE.md#全-api-模式配置不用本地模型)。
 
 ## 项目结构
 
 ```
 comment-miner/
-├── main.py                 # 主入口
+├── main.py                 # CLI 入口
+├── server.py               # Web 服务（FastAPI + SSE + 前端）
 ├── config.yaml.example     # 配置示例
 ├── requirements.txt
+├── USAGE.md                # 详细使用教程
 │
 ├── scrapers/
 │   ├── base.py             # Comment 数据结构
 │   ├── youtube.py          # YouTube Data API 采集
+│   ├── bilibili.py         # B站评论 API 采集
 │   └── factory.py          # URL → 自动选 scraper
 │
 ├── stage0_prefilter.py     # 规则硬筛
@@ -94,19 +109,14 @@ comment-miner/
 ├── llm/
 │   └── client.py           # 统一 LLM 客户端
 │
-└── prompts/
-    ├── reader.txt          # Stage 1 精读 prompt
-    └── reporter.txt        # Stage 2 报告 prompt
+├── prompts/
+│   ├── reader.txt          # Stage 1 精读 prompt
+│   └── reporter.txt        # Stage 2 报告 prompt
+│
+└── frontend/               # React Web UI
+    ├── src/App.jsx          # 主界面组件
+    └── dist/                # 预构建产物（server.py 直接 serve）
 ```
-
-## 获取 YouTube API Key
-
-1. 前往 [Google Cloud Console](https://console.cloud.google.com/)
-2. 创建项目 → 启用 **YouTube Data API v3**
-3. 创建凭据 → API Key
-4. 填入 `config.yaml` 的 `youtube.api_key`
-
-> 免费配额：每天 10,000 单位。采集 5000 条评论约消耗 50-100 单位。
 
 ## License
 

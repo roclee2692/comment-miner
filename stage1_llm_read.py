@@ -74,17 +74,19 @@ class LLMReader:
         return "\n".join(lines)
 
     def _append_gems(self, llm_response: str, batch_idx: int):
-        if "PASS ALL" in llm_response:
+        response = llm_response.strip()
+        # PASS ALL: only if the response is essentially just "PASS ALL" (not embedded in longer text)
+        if response == "PASS ALL" or response.startswith("PASS ALL") and len(response) < 30:
             with open(self.gems_path, "a", encoding="utf-8") as f:
                 f.write(f"<!-- Batch {batch_idx + 1}: PASS ALL -->\n")
             return
 
         with open(self.gems_path, "a", encoding="utf-8") as f:
             f.write(f"\n<!-- Batch {batch_idx + 1} -->\n")
-            f.write(llm_response.strip())
+            f.write(response)
             f.write("\n\n---\n\n")
 
-        self.kept_count += llm_response.count("KEEP #")
+        self.kept_count += response.count("KEEP #")
 
     def _append_error(self, batch_idx: int, error: str):
         with open(self.gems_path, "a", encoding="utf-8") as f:
