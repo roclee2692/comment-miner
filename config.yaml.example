@@ -1,0 +1,45 @@
+# 视频评论深度洞察系统 — 配置示例
+# 复制此文件为 config.yaml，填入真实的 Key 和配置
+
+# 视频信息（可选，用于提升 LLM 的理解）
+video_title: "在这里填视频标题"
+video_brief: "在这里填视频简介或主题（一两句话即可）"
+
+# 最多采集评论数
+max_comments: 5000
+
+# YouTube API Key（从 Google Cloud Console 获取）
+youtube:
+  api_key: "YOUR_YOUTUBE_API_KEY"
+
+llm:
+  # Stage 1 精读：追求速度和性价比
+  reader:
+    provider: ollama                  # "ollama" 或 "openai_compatible"
+    model: qwen2.5:14b
+    base_url: http://localhost:11434
+    temperature: 0.2
+    max_tokens: 2048
+
+  # Stage 2 报告：追求深度（推荐用思考模型）
+  thinker:
+    provider: openai_compatible
+    model: deepseek-reasoner          # 或 deepseek-chat / claude-sonnet-4-20250514
+    base_url: https://api.deepseek.com
+    api_key: "YOUR_DEEPSEEK_API_KEY"
+    temperature: 0.6
+    max_tokens: 8192
+
+# --- 其他 LLM 方案参考 ---
+#
+# 纯本地（零成本）：
+#   reader:  provider: ollama, model: qwen2.5:14b
+#   thinker: provider: ollama, model: qwq:32b
+#
+# 性价比（约 ¥0.3/次）：
+#   reader:  provider: openai_compatible, model: deepseek-chat,     base_url: https://api.deepseek.com
+#   thinker: provider: openai_compatible, model: deepseek-reasoner, base_url: https://api.deepseek.com
+#
+# 质量优先（约 $0.8/次）：
+#   reader:  provider: openai_compatible, model: claude-haiku-4-5-20251001, base_url: https://api.anthropic.com
+#   thinker: provider: openai_compatible, model: claude-sonnet-4-6,         base_url: https://api.anthropic.com

@@ -1,0 +1,22 @@
+# 配置（含 API 密钥，不提交）
+config.yaml
+
+# 运行产物
+data/
+reports/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# 系统文件
+.DS_Store
+Thumbs.db
