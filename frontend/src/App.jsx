@@ -104,8 +104,8 @@ function currentStage(logs) {
 function isValidUrl(url) {
   // YouTube
   if (/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)[A-Za-z0-9_-]{11}/.test(url)) return "youtube";
-  // B站
-  if (/bilibili\.com\/video\/BV[A-Za-z0-9]{10}/.test(url) || /b23\.tv\/BV[A-Za-z0-9]{10}/.test(url)) return "bilibili";
+  // B站（完整链接或 b23.tv 短链接）
+  if (/bilibili\.com\/video\/BV/.test(url) || /b23\.tv\//.test(url)) return "bilibili";
   return null;
 }
 

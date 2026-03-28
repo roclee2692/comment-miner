@@ -16,31 +16,45 @@ class BilibiliScraper:
         self._video_id = ""
         self._session = requests.Session()
         self._session.headers.update(self.HEADERS)
+        self._init_cookies()
 
     @property
     def video_id(self) -> str:
         return self._video_id
+
+    def _init_cookies(self):
+        """访问主站 + SPI 接口获取必要的反爬 Cookie"""
+        try:
+            self._session.get("https://www.bilibili.com", timeout=10)
+            spi = self._session.get(
+                "https://api.bilibili.com/x/frontend/finger/spi", timeout=10
+            ).json().get("data", {})
+            if spi.get("b_3"):
+                self._session.cookies.set("buvid3", spi["b_3"], domain=".bilibili.com")
+            if spi.get("b_4"):
+                self._session.cookies.set("buvid4", spi["b_4"], domain=".bilibili.com")
+        except Exception:
+            pass  # Cookie 初始化失败不影响旧版 API
 
     def fetch_comments(self, url: str, max_count: int = 5000) -> list[Comment]:
         self._video_id = self._extract_bvid(url)
         oid = self._bvid_to_oid(self._video_id)
 
         comments = []
-        next_offset = 0
         page = 1
 
         while len(comments) < max_count:
             params = {
-                "type": 1,           # 1 = 视频评论
+                "type": 1,        # 1 = 视频评论
                 "oid": oid,
-                "mode": 3,           # 3 = 按热度排序
-                "next": next_offset,
-                "ps": 20,            # 每页条数
+                "pn": page,       # 页码
+                "ps": 20,         # 每页条数
+                "sort": 2,        # 0=按时间, 2=按热度
             }
 
             try:
                 resp = self._session.get(
-                    "https://api.bilibili.com/x/v2/reply/main",
+                    "https://api.bilibili.com/x/v2/reply",
                     params=params,
                     timeout=15,
                 )
@@ -50,7 +64,7 @@ class BilibiliScraper:
                 raise TimeoutError("B站 API 请求超时")
 
             if resp.status_code != 200:
-                raise RuntimeError(f"B站 API 返回 {resp.status_code}: {resp.text[:200]}")
+                raise RuntimeError(f"B站 API 返回 {resp.status_code}")
 
             data = resp.json()
             if data.get("code") != 0:
@@ -72,12 +86,6 @@ class BilibiliScraper:
                     video_id=self._video_id,
                     comment_id=str(r.get("rpid", "")),
                 ))
-
-            # 游标翻页
-            cursor = data.get("data", {}).get("cursor", {})
-            if cursor.get("is_end", True):
-                break
-            next_offset = cursor.get("next", 0)
 
             page += 1
             # 反爬：每页间隔 0.5s
@@ -102,22 +110,30 @@ class BilibiliScraper:
 
         return data["data"]["aid"]
 
-    @staticmethod
-    def _extract_bvid(url: str) -> str:
-        """从 URL 中提取 BV 号"""
-        # 支持格式：
-        #   https://www.bilibili.com/video/BV1xx...
-        #   https://b23.tv/BV1xx...
-        #   https://www.bilibili.com/video/av12345  (旧格式)
-        m = re.search(r"(BV[A-Za-z0-9]{10})", url)
+    def _extract_bvid(self, url: str) -> str:
+        """从 URL 中提取 BV 号，支持短链接跳转"""
+        # 1. 直接从 URL 中找 BV 号
+        m = re.search(r"(BV[A-Za-z0-9]{10,12})", url)
         if m:
             return m.group(1)
 
-        # av号格式
+        # 2. b23.tv 短链接：跟踪跳转获取真实 URL
+        if "b23.tv" in url:
+            try:
+                resp = self._session.head(url, allow_redirects=True, timeout=10)
+                real_url = resp.url
+                m = re.search(r"(BV[A-Za-z0-9]{10,12})", real_url)
+                if m:
+                    return m.group(1)
+            except Exception:
+                pass
+            raise ValueError("B站短链接解析失败，请直接使用完整的 bilibili.com 视频链接")
+
+        # 3. av号格式
         m = re.search(r"av(\d+)", url, re.IGNORECASE)
         if m:
             raise ValueError(
-                f"检测到 av 号格式，请使用 BV 号格式的链接（在 B站 打开视频后从地址栏复制）"
+                "检测到 av 号格式，请使用 BV 号格式的链接（在 B站 打开视频后从地址栏复制）"
             )
 
         raise ValueError(f"无法从链接中提取 B站视频 ID: {url}")
