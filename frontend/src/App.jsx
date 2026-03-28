@@ -122,6 +122,7 @@ export default function App() {
   const [reader,  setReader]  = useState(_saved?.reader  || { ...PRESETS.gemini.reader });
   const [thinker, setThinker] = useState(_saved?.thinker || { ...PRESETS.gemini.thinker });
   const [ytKey, setYtKey]     = useState(_saved?.ytKey || getKey("__youtube__") || "");
+  const [biliSess, setBiliSess] = useState(_saved?.biliSess || getKey("__bilibili_sessdata__") || "");
 
   const [videoUrl,   setUrl]   = useState("");
   const [videoTitle, setTitle] = useState("");
@@ -149,15 +150,16 @@ export default function App() {
 
   // 自动保存配置到 localStorage
   useEffect(() => {
-    saveConfig({ preset, reader, thinker, ytKey, maxCmt });
-  }, [preset, reader, thinker, ytKey, maxCmt]);
+    saveConfig({ preset, reader, thinker, ytKey, biliSess, maxCmt });
+  }, [preset, reader, thinker, ytKey, biliSess, maxCmt]);
 
   // API Key 变化时，按 baseUrl 记住
   useEffect(() => {
     if (reader.apiKey)  saveKey(reader.baseUrl, reader.apiKey);
     if (thinker.apiKey) saveKey(thinker.baseUrl, thinker.apiKey);
     if (ytKey) saveKey("__youtube__", ytKey);
-  }, [reader.apiKey, reader.baseUrl, thinker.apiKey, thinker.baseUrl, ytKey]);
+    if (biliSess) saveKey("__bilibili_sessdata__", biliSess);
+  }, [reader.apiKey, reader.baseUrl, thinker.apiKey, thinker.baseUrl, ytKey, biliSess]);
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
@@ -210,6 +212,7 @@ export default function App() {
           video_title:  videoTitle,
           video_brief:  videoBrief,
           max_comments: maxCmt,
+          bilibili_sessdata: biliSess,
           reader:  { ...reader,  youtube_api_key: ytKey },
           thinker: { ...thinker },
         }),
@@ -357,6 +360,14 @@ export default function App() {
               <Field label="YouTube API Key（仅 YouTube 需要，B站无需填写）">
                 <input style={S.input} type="password" value={ytKey}
                   onChange={e => setYtKey(e.target.value)} placeholder="AIza..." />
+              </Field>
+              <Field label="B站 SESSDATA Cookie（可选，提高B站采集稳定性）">
+                <input style={S.input} type="password" value={biliSess}
+                  onChange={e => setBiliSess(e.target.value)}
+                  placeholder="填入后可避免反爬拦截" />
+                <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>
+                  获取方式：浏览器登录 B站 → F12 → Application → Cookies → bilibili.com → 复制 SESSDATA 的值
+                </div>
               </Field>
               <Field label={`最大采集评论数：${maxCmt.toLocaleString()}`}>
                 <input type="range" min={500} max={10000} step={500} value={maxCmt}

@@ -12,6 +12,7 @@ def create_scraper(url: str, config: dict):
 
     # B站
     if "bilibili.com" in url or "b23.tv" in url:
-        return BilibiliScraper()
+        sessdata = config.get("bilibili", {}).get("sessdata", "")
+        return BilibiliScraper(sessdata=sessdata)
 
     raise ValueError(f"不支持的链接: {url}\n目前支持：YouTube、B站")

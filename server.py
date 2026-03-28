@@ -51,6 +51,7 @@ class RunRequest(BaseModel):
     video_title: str = ""
     video_brief: str = ""
     max_comments: int = 5000
+    bilibili_sessdata: str = ""
     reader: dict
     thinker: dict
 
@@ -136,6 +137,7 @@ def _run_job(job_id: str, req: RunRequest):
         # Build a minimal config dict for the scraper
         config = {
             "youtube": {},  # api_key comes from reader config or env
+            "bilibili": {},
             "max_comments": req.max_comments,
         }
         # Allow passing YouTube API key via reader config's extra field
@@ -147,6 +149,10 @@ def _run_job(job_id: str, req: RunRequest):
             if cfg_path.exists():
                 saved = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
                 config["youtube"] = saved.get("youtube", {})
+
+        # B站 SESSDATA Cookie
+        if req.bilibili_sessdata:
+            config["bilibili"]["sessdata"] = req.bilibili_sessdata
 
         scraper = create_scraper(req.video_url, config)
         raw = scraper.fetch_comments(req.video_url, max_count=req.max_comments)
