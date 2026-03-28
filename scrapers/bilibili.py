@@ -17,12 +17,14 @@ class BilibiliScraper:
         self._session = requests.Session()
         self._session.headers.update(self.HEADERS)
 
+        # 始终获取 buvid 指纹 Cookie（新旧 API 都需要）
+        self._init_anonymous()
+
         if sessdata:
-            # 用户提供了 SESSDATA，模拟登录状态
+            # URL 解码（前端可能传过来 %2C %2A 等编码字符）
+            from urllib.parse import unquote
+            sessdata = unquote(sessdata).strip()
             self._session.cookies.set("SESSDATA", sessdata, domain=".bilibili.com")
-        else:
-            # 未提供则尝试获取匿名 Cookie
-            self._init_anonymous()
 
     @property
     def video_id(self) -> str:
@@ -52,7 +54,14 @@ class BilibiliScraper:
         has_auth = "SESSDATA" in {c.name for c in self._session.cookies}
 
         if has_auth:
-            comments = self._fetch_new_api(oid, max_count)
+            try:
+                comments = self._fetch_new_api(oid, max_count)
+            except RuntimeError as e:
+                if "412" in str(e):
+                    # 新版 API 被拦截，自动降级到旧版
+                    comments = self._fetch_old_api(oid, max_count)
+                else:
+                    raise
         else:
             comments = self._fetch_old_api(oid, max_count)
 
