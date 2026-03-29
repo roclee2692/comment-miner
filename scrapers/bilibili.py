@@ -73,10 +73,10 @@ class BilibiliScraper:
         # 3. 获取 Wbi 签名密钥
         self._init_wbi_keys()
 
-        print(f"  [B站] buvid3={'buvid3' in self._cookie_names}, "
+        print(f"  [Bilibili] buvid3={'buvid3' in self._cookie_names}, "
               f"bili_ticket={'bili_ticket' in self._cookie_names}, "
-              f"wbi_keys={'✓' if self._img_key else '✗'}, "
-              f"SESSDATA={'✓' if sessdata else '✗'}")
+              f"wbi_keys={'Y' if self._img_key else 'N'}, "
+              f"SESSDATA={'Y' if sessdata else 'N'}")
 
     @property
     def _cookie_names(self) -> set:
@@ -122,10 +122,10 @@ class BilibiliScraper:
 
             resp = self._session.post(
                 "https://api.bilibili.com/bapis/bilibili.api.ticket.v1.Ticket/GenWebTicket",
-                data={
+                params={
                     "key_id": "ec02",
                     "hexsign": hex_sign,
-                    "context[ts]": ts,
+                    "context[ts]": str(ts),
                     "csrf": "",
                 },
                 timeout=10,
@@ -197,7 +197,8 @@ class BilibiliScraper:
                 "ps": 20,
             })
 
-            resp = self._request("https://api.bilibili.com/x/v2/reply/main", params)
+            # /wbi/main 是当前有效的评论端点（需 Wbi 签名）
+            resp = self._request("https://api.bilibili.com/x/v2/reply/wbi/main", params)
             replies = resp.get("data", {}).get("replies") or []
             if not replies:
                 break
