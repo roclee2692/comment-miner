@@ -10,9 +10,10 @@ PROMPTS_DIR = Path(__file__).parent / "prompts"
 
 
 class LLMReader:
-    def __init__(self, llm_client, video_context: dict):
+    def __init__(self, llm_client, video_context: dict, keep_per_batch: int = 5):
         self.llm = llm_client
         self.ctx = video_context
+        self.keep_per_batch = max(1, min(keep_per_batch, 15))
         self.gems_path = Path(f"data/gems_{self.ctx['video_id']}.md")
         self.kept_count = 0
         self._system_prompt = (PROMPTS_DIR / "reader.txt").read_text(encoding="utf-8")
@@ -39,6 +40,7 @@ class LLMReader:
             system = self._system_prompt.format(
                 video_title=self.ctx["title"],
                 video_brief=self.ctx.get("brief", ""),
+                keep_per_batch=self.keep_per_batch,
             )
             user_msg = (
                 f"## 本批评论（第 {start + 1}-{end} 条）\n\n{batch_text}"
@@ -68,7 +70,10 @@ class LLMReader:
         lines = []
         for i, c in enumerate(batch):
             idx = start_idx + i + 1
-            lines.append(f"### #{idx} @{c.author} | 👍{c.likes} | 💬{c.reply_count}")
+            header = f"### #{idx} @{c.author} | 👍{c.likes} | 💬{c.reply_count}"
+            if c.parent_id:
+                header += f" | ↩ 回复 @{c.parent_author}"
+            lines.append(header)
             lines.append(c.text)
             lines.append("")
         return "\n".join(lines)

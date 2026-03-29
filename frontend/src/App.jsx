@@ -14,6 +14,8 @@ const T = {
     biliSess: "B站 SESSDATA Cookie（可选，提高B站采集稳定性）", biliSessPh: "填入后可避免反爬拦截",
     biliSessHelp: "获取方式：浏览器登录 B站 → F12 → Application → Cookies → bilibili.com → 复制 SESSDATA 的值",
     maxComments: (n) => `最大采集评论数：${n.toLocaleString()}`,
+    keepPerBatch: (n) => `每批精读保留上限：${n} 条（每批20条评论）`,
+    keepPerBatchHelp: "控制 Stage 1 每批保留多少条精华。越大保留越多，越小越精。推荐 3-8。",
     modelPreset: "模型方案", modelConfig: "模型配置",
     readerLabel: "Stage 1 · 精读模型", thinkerLabel: "Stage 2 · 思考模型",
     ollamaLocal: "Ollama 本地",
@@ -27,6 +29,8 @@ const T = {
     reportMode: "报告模式", reportQuick: "快速洞察", reportDeep: "深度研究",
     reportQuickDesc: "3分钟掌握核心信息，800-1500字", reportDeepDesc: "社会观察视角，深度分析，3000字+",
     downloadMd: "下载 Markdown", downloadPdf: "下载 PDF",
+    ollamaHint: "使用本地模型前，请确保已安装并启动 Ollama，并拉取所需模型。",
+    ollamaSteps: ["1. 安装 Ollama：ollama.com 下载", "2. 启动：ollama serve", "3. 拉取模型：ollama pull qwen2.5:14b", "4. API Key 留空，无需填写"],
     openSource: "开源免费", license: "CC BY-NC 4.0 — 禁止商用",
     presets: {
       gemini:   { name: "Google Gemini（有$300赠金）", desc: "免费额度充裕，效果好" },
@@ -47,6 +51,8 @@ const T = {
     biliSess: "Bilibili SESSDATA Cookie (optional, improves stability)", biliSessPh: "Helps avoid anti-scraping blocks",
     biliSessHelp: "How to get: Log in to Bilibili → F12 → Application → Cookies → bilibili.com → Copy SESSDATA value",
     maxComments: (n) => `Max comments: ${n.toLocaleString()}`,
+    keepPerBatch: (n) => `Keep per batch: ${n} (out of 20 comments)`,
+    keepPerBatchHelp: "Controls how many gems Stage 1 keeps per batch. Higher = more, lower = stricter. Recommended: 3-8.",
     modelPreset: "Model Presets", modelConfig: "Model Config",
     readerLabel: "Stage 1 · Reader Model", thinkerLabel: "Stage 2 · Thinker Model",
     ollamaLocal: "Ollama Local",
@@ -60,6 +66,8 @@ const T = {
     reportMode: "Report Mode", reportQuick: "Quick Insight", reportDeep: "Deep Research",
     reportQuickDesc: "Core insights in 3 min, 800-1500 words", reportDeepDesc: "Sociological analysis, 3000+ words",
     downloadMd: "Download MD", downloadPdf: "Download PDF",
+    ollamaHint: "Before using local models, make sure Ollama is installed, running, and models are pulled.",
+    ollamaSteps: ["1. Install Ollama: ollama.com", "2. Start: ollama serve", "3. Pull model: ollama pull qwen2.5:14b", "4. Leave API Key empty"],
     openSource: "Open Source",  license: "CC BY-NC 4.0 — Non-commercial",
     presets: {
       gemini:   { name: "Google Gemini ($300 free)", desc: "Generous free tier, great quality" },
@@ -167,6 +175,7 @@ export default function App() {
   const [biliSess, setBiliSess] = useState(_saved?.biliSess || getKey("__bilibili_sessdata__") || "");
 
   const [reportMode, setReportMode] = useState(_saved?.reportMode || "quick");
+  const [keepPerBatch, setKeepPerBatch] = useState(_saved?.keepPerBatch || 5);
 
   const [videoUrl,   setUrl]   = useState("");
   const [videoTitle, setTitle] = useState("");
@@ -199,8 +208,8 @@ export default function App() {
   }, [preset]);
 
   useEffect(() => {
-    saveConfig({ preset, reader, thinker, ytKey, biliSess, maxCmt, reportMode });
-  }, [preset, reader, thinker, ytKey, biliSess, maxCmt, reportMode]);
+    saveConfig({ preset, reader, thinker, ytKey, biliSess, maxCmt, reportMode, keepPerBatch });
+  }, [preset, reader, thinker, ytKey, biliSess, maxCmt, reportMode, keepPerBatch]);
 
   useEffect(() => {
     if (reader.apiKey)  saveKey(reader.baseUrl, reader.apiKey);
@@ -253,7 +262,7 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           video_url: url, video_title: videoTitle, video_brief: videoBrief,
-          max_comments: maxCmt, bilibili_sessdata: biliSess, report_mode: reportMode,
+          max_comments: maxCmt, bilibili_sessdata: biliSess, report_mode: reportMode, keep_per_batch: keepPerBatch,
           reader: { ...reader, youtube_api_key: ytKey }, thinker: { ...thinker },
         }),
       });
@@ -396,6 +405,11 @@ export default function App() {
                 <input type="range" min={500} max={10000} step={500} value={maxCmt}
                   onChange={e => setMax(Number(e.target.value))} style={{ width: "100%", accentColor: "#6366f1" }} />
               </Field>
+              <Field label={t.keepPerBatch(keepPerBatch)}>
+                <input type="range" min={1} max={15} step={1} value={keepPerBatch}
+                  onChange={e => setKeepPerBatch(Number(e.target.value))} style={{ width: "100%", accentColor: "#6366f1" }} />
+                <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>{t.keepPerBatchHelp}</div>
+              </Field>
             </section>
 
             <section style={{ marginBottom: 28 }}>
@@ -415,6 +429,12 @@ export default function App() {
                   );
                 })}
               </div>
+              {(preset === "local" || preset === "hybrid") && (
+                <div style={{ marginTop: 10, padding: "10px 14px", background: "#fef3c7", borderRadius: 8, border: "1px solid #fbbf24", fontSize: 12, lineHeight: 1.7 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 4, color: "#92400e" }}>{t.ollamaHint}</div>
+                  {t.ollamaSteps.map((s, i) => <div key={i} style={{ color: "#78350f" }}>{s}</div>)}
+                </div>
+              )}
             </section>
 
             <section style={{ marginBottom: 28 }}>

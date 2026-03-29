@@ -57,6 +57,7 @@ class RunRequest(BaseModel):
     max_comments: int = 5000
     bilibili_sessdata: str = ""
     report_mode: str = "quick"   # "quick" | "deep"
+    keep_per_batch: int = 5      # 每批20条评论中最多保留几条精华
     reader: dict
     thinker: dict
 
@@ -64,6 +65,11 @@ class RunRequest(BaseModel):
     @classmethod
     def clamp_max_comments(cls, v: int) -> int:
         return max(100, min(v, 20000))
+
+    @field_validator("keep_per_batch")
+    @classmethod
+    def clamp_keep_per_batch(cls, v: int) -> int:
+        return max(1, min(v, 15))
 
 
 @app.post("/api/run")
@@ -200,7 +206,7 @@ def _run_job(job_id: str, req: RunRequest):
             _jobs[job_id]["video_id"] = scraper.video_id
 
         # Stage 1
-        _push(job_id, f"📖 Stage 1: LLM 精读 ({req.reader.get('model', '?')})...", "stage")
+        _push(job_id, f"📖 Stage 1: LLM 精读 ({req.reader.get('model', '?')}, 每批保留≤{req.keep_per_batch})...", "stage")
         reader_cfg = {
             "provider": req.reader.get("provider", "openai_compatible"),
             "model": req.reader.get("model", ""),
@@ -217,7 +223,7 @@ def _run_job(job_id: str, req: RunRequest):
                 kept = llm_response.count("KEEP #") if "PASS ALL" not in llm_response else 0
                 _push(job_id, f"   Batch {batch_idx + 1} → KEEP {kept} 条")
 
-        reader = LoggingReader(reader_llm, video_context)
+        reader = LoggingReader(reader_llm, video_context, keep_per_batch=req.keep_per_batch)
         gems_path = reader.read_all(filtered)
         _push(job_id, f"   ✓ 精读完成，gems.md：{reader.kept_count} 条精华评论", "success")
 

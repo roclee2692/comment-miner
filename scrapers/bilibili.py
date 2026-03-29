@@ -162,7 +162,8 @@ class BilibiliScraper:
 
     def fetch_comments(self, url: str, max_count: int = 5000) -> list[Comment]:
         self._video_id = self._extract_bvid(url)
-        oid = self._bvid_to_oid(self._video_id)
+        self._oid = self._bvid_to_oid(self._video_id)
+        oid = self._oid
 
         # 优先新版 API（游标翻页），失败则降级旧版
         try:
@@ -204,7 +205,12 @@ class BilibiliScraper:
                 break
 
             for r in replies:
-                comments.append(self._parse_reply(r))
+                main_comment = self._parse_reply(r)
+                comments.append(main_comment)
+                # 抓取楼中楼子评论
+                if r.get("rcount", 0) > 0 and len(comments) < max_count:
+                    sub_replies = self._fetch_sub_replies(oid, int(r.get("rpid", 0)), r.get("rcount", 0), main_comment.author)
+                    comments.extend(sub_replies[:max_count - len(comments)])
 
             cursor = resp.get("data", {}).get("cursor", {})
             if cursor.get("is_end", True):
@@ -233,12 +239,52 @@ class BilibiliScraper:
                 break
 
             for r in replies:
-                comments.append(self._parse_reply(r))
+                main_comment = self._parse_reply(r)
+                comments.append(main_comment)
+                if r.get("rcount", 0) > 0 and len(comments) < max_count:
+                    sub_replies = self._fetch_sub_replies(self._oid, int(r.get("rpid", 0)), r.get("rcount", 0), main_comment.author)
+                    comments.extend(sub_replies[:max_count - len(comments)])
 
             page += 1
             time.sleep(0.5)
 
         return comments
+
+    def _fetch_sub_replies(self, oid: int, root_rpid: int, total: int, parent_author: str) -> list[Comment]:
+        """抓取某条主评论下的楼中楼子回复"""
+        sub_comments = []
+        page = 1
+        max_pages = min((total // 20) + 2, 5)  # 每条主评论最多抓 5 页子评论
+
+        while page <= max_pages:
+            params = self._signed_params({
+                "type": 1,
+                "oid": oid,
+                "root": root_rpid,
+                "ps": 20,
+                "pn": page,
+            })
+            try:
+                resp = self._request("https://api.bilibili.com/x/v2/reply/reply", params)
+            except Exception:
+                break
+
+            replies = resp.get("data", {}).get("replies") or []
+            if not replies:
+                break
+
+            for r in replies:
+                c = self._parse_reply(r)
+                c.parent_id = str(root_rpid)
+                c.parent_author = parent_author
+                sub_comments.append(c)
+
+            if len(replies) < 20:
+                break
+            page += 1
+            time.sleep(0.2)
+
+        return sub_comments
 
     def _request(self, url: str, params: dict) -> dict:
         # 评论请求用视频页面作为 Referer（更像真实浏览器）

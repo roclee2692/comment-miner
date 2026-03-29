@@ -37,7 +37,8 @@ def main(video_url: str):
     # Stage 1: LLM 精读
     print("📖 LLM reading comments...")
     reader_llm = LLMClient(config["llm"]["reader"])
-    reader = LLMReader(reader_llm, video_context)
+    keep_per_batch = config.get("keep_per_batch", 5)
+    reader = LLMReader(reader_llm, video_context, keep_per_batch=keep_per_batch)
     gems_path = reader.read_all(filtered)
     print(f"   💎 Gems saved to: {gems_path}")
     print(f"   Kept {reader.kept_count} quality comments")

@@ -86,7 +86,9 @@ python main.py "https://www.youtube.com/watch?v=VIDEO_ID"
 | Claude | claude-haiku | claude-sonnet | ~$0.8 |
 | 全本地 | Ollama qwen2.5:14b | Ollama qwq:32b | ¥0 |
 
-详细配置见 [USAGE.md](USAGE.md#全-api-模式配置不用本地模型)。
+**想用本地模型？** 安装 [Ollama](https://ollama.com/)，拉取模型（`ollama pull qwen2.5:14b`），然后在前端选择「全本地」或「混搭」预设即可，无需 API Key。详细教程见 [USAGE.md](USAGE.md#本地模型配置ollama零成本)。
+
+API 模式配置见 [USAGE.md](USAGE.md#全-api-模式配置不用本地模型)。
 
 ## 项目结构
 
@@ -113,7 +115,8 @@ comment-miner/
 │
 ├── prompts/
 │   ├── reader.txt          # Stage 1 精读 prompt
-│   └── reporter.txt        # Stage 2 报告 prompt
+│   ├── reporter_quick.txt  # Stage 2 快速洞察 prompt
+│   └── reporter_deep.txt   # Stage 2 深度研究 prompt
 │
 └── frontend/               # React Web UI（支持中英切换）
     ├── src/App.jsx          # 主界面组件

@@ -50,14 +50,21 @@ class YouTubeScraper:
             for item in data.get("items", []):
                 try:
                     snippet = item["snippet"]["topLevelComment"]["snippet"]
-                    comments.append(Comment(
+                    main_comment = Comment(
                         text=snippet.get("textDisplay", ""),
                         author=snippet.get("authorDisplayName", ""),
                         likes=snippet.get("likeCount", 0),
                         reply_count=item["snippet"].get("totalReplyCount", 0),
                         video_id=self._video_id,
                         comment_id=item.get("id", ""),
-                    ))
+                    )
+                    comments.append(main_comment)
+
+                    # 抓取子评论（回复）
+                    reply_count = item["snippet"].get("totalReplyCount", 0)
+                    if reply_count > 0 and len(comments) < max_count:
+                        sub = self._fetch_replies(item["id"], main_comment.author, max_count - len(comments))
+                        comments.extend(sub)
                 except (KeyError, TypeError):
                     continue
 
@@ -66,6 +73,53 @@ class YouTubeScraper:
                 break
 
         return comments
+
+    def _fetch_replies(self, parent_id: str, parent_author: str, remaining: int) -> list[Comment]:
+        """抓取某条主评论下的回复"""
+        replies = []
+        page_token = None
+        max_per_thread = min(remaining, 100)  # 每条主评论最多抓 100 条回复
+
+        while len(replies) < max_per_thread:
+            params = {
+                "part": "snippet",
+                "parentId": parent_id,
+                "maxResults": min(100, max_per_thread - len(replies)),
+                "key": self.api_key,
+            }
+            if page_token:
+                params["pageToken"] = page_token
+
+            try:
+                resp = requests.get(f"{self.API_BASE}/comments", params=params, timeout=30)
+            except (requests.ConnectionError, requests.Timeout):
+                break
+
+            if resp.status_code != 200:
+                break
+
+            data = resp.json()
+            for item in data.get("items", []):
+                try:
+                    snippet = item["snippet"]
+                    replies.append(Comment(
+                        text=snippet.get("textDisplay", ""),
+                        author=snippet.get("authorDisplayName", ""),
+                        likes=snippet.get("likeCount", 0),
+                        reply_count=0,
+                        video_id=self._video_id,
+                        comment_id=item.get("id", ""),
+                        parent_id=parent_id,
+                        parent_author=parent_author,
+                    ))
+                except (KeyError, TypeError):
+                    continue
+
+            page_token = data.get("nextPageToken")
+            if not page_token:
+                break
+
+        return replies
 
     @staticmethod
     def _extract_video_id(url: str) -> str:

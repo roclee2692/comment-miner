@@ -131,6 +131,136 @@ python main.py "https://www.bilibili.com/video/BV1xxxxxxxxx"
 
 ---
 
+## 本地模型配置（Ollama，零成本）
+
+如果你有独立显卡（NVIDIA / AMD / Apple Silicon），可以用 Ollama 在本地跑大模型，完全免费、无需 API Key、数据不出本机。
+
+### 第一步：安装 Ollama
+
+前往 [ollama.com](https://ollama.com/) 下载安装：
+
+| 系统 | 安装方式 |
+|------|---------|
+| **Windows** | 下载 `.exe` 安装包，双击安装 |
+| **macOS** | 下载 `.dmg`，或 `brew install ollama` |
+| **Linux** | `curl -fsSL https://ollama.com/install.sh \| sh` |
+
+安装后 Ollama 会自动在后台运行。如果没有，手动启动：
+
+```bash
+ollama serve
+```
+
+验证是否正常：
+
+```bash
+# 应该返回 "Ollama is running"
+curl http://localhost:11434
+```
+
+### 第二步：下载模型
+
+根据你的显存选择合适的模型：
+
+```bash
+# Stage 1 精读模型（推荐 qwen2.5:14b，需要 ~10GB 显存）
+ollama pull qwen2.5:14b
+
+# Stage 2 报告模型（推荐 qwq:32b，需要 ~20GB 显存）
+ollama pull qwq:32b
+```
+
+**显存不够？** 用小一号的模型：
+
+| 显存 | Stage 1 精读 | Stage 2 报告 | 效果 |
+|------|-------------|-------------|------|
+| **24GB+** | `qwen2.5:14b` | `qwq:32b` | 最佳 |
+| **16GB** | `qwen2.5:14b` | `qwq:14b` | 很好 |
+| **8GB** | `qwen2.5:7b` | `qwen2.5:14b` | 够用 |
+| **6GB** | `qwen2.5:3b` | `qwen2.5:7b` | 勉强 |
+
+> **提示**：也可以用其他模型，如 `llama3.3:70b`、`deepseek-r1:14b`、`gemma3:27b` 等。
+> 完整模型列表：运行 `ollama list` 查看已下载的模型，或访问 [ollama.com/library](https://ollama.com/library) 浏览。
+
+### 第三步：在前端配置
+
+**方式 A：一键预设（最简单）**
+
+1. 启动后端：`python server.py`
+2. 浏览器打开 `http://localhost:8000`
+3. 在配置页的「模型方案」区域，点击 **「全本地（零成本）」** 预设
+4. 模型配置会自动填入：
+   - Stage 1：Ollama 本地 → `qwen2.5:14b` → `http://localhost:11434`
+   - Stage 2：Ollama 本地 → `qwq:32b` → `http://localhost:11434`
+5. **API Key 留空**（本地模型不需要）
+6. 填入视频 URL，点击「开始分析」
+
+**方式 B：混搭模式（推荐显存不够的用户）**
+
+点击 **「混搭（本地+API）」** 预设：
+- Stage 1 精读用本地 Ollama（省钱，精读对模型要求不高）
+- Stage 2 报告用云端 API（DeepSeek-R1，¥0.1 一次，报告质量更好）
+
+这样只需要 ~10GB 显存跑 Stage 1，Stage 2 交给云端。
+
+**方式 C：手动配置**
+
+如果你用了不同的模型名或端口，手动修改：
+1. Provider 下拉选择 **「Ollama 本地」**
+2. Base URL 填 `http://localhost:11434`（默认端口，通常不用改）
+3. Model 填你下载的模型名，如 `qwen2.5:7b`
+4. API Key 留空
+
+### 第四步：命令行模式
+
+如果用命令行而非 Web 界面，编辑 `config.yaml`：
+
+```yaml
+llm:
+  reader:
+    provider: ollama
+    model: qwen2.5:14b
+    base_url: http://localhost:11434
+    temperature: 0.2
+    max_tokens: 2048
+
+  thinker:
+    provider: ollama
+    model: qwq:32b
+    base_url: http://localhost:11434
+    temperature: 0.6
+    max_tokens: 8192
+```
+
+然后运行：
+
+```bash
+python main.py "https://www.bilibili.com/video/BV1xxxxxxxxx"
+```
+
+### 常见问题
+
+**Q: 报错 "无法连接 Ollama"？**
+- 确认 Ollama 正在运行：`ollama serve`
+- 确认端口没被占用：`curl http://localhost:11434`
+- Windows 防火墙可能阻止了连接，允许 Ollama 通过防火墙
+
+**Q: 模型加载很慢？**
+- 第一次加载模型需要时间（加载到显存），后续调用会快很多
+- 如果持续很慢，可能显存不足导致模型在 CPU 上运行，换更小的模型
+
+**Q: 生成质量不如 API？**
+- 本地模型参数量有限，质量确实不如 GPT-5.4 / Claude 4.6 等大模型
+- 建议：Stage 1 用本地（精读任务简单），Stage 2 用 API（报告需要强推理）
+- 即「混搭」模式，兼顾成本和质量
+
+**Q: 可以用 Google Gemma / Meta Llama / DeepSeek 本地模型吗？**
+- 可以！只要 Ollama 支持的模型都能用
+- `ollama pull gemma3:27b`、`ollama pull llama3.3:70b`、`ollama pull deepseek-r1:14b`
+- 在前端 Model 字段填对应模型名即可
+
+---
+
 ## 全 API 模式配置（不用本地模型）
 
 如果你没有本地 GPU 或不想跑 Ollama，可以全部使用云端 API。

@@ -86,7 +86,9 @@ python main.py "https://www.youtube.com/watch?v=VIDEO_ID"
 | Claude | claude-haiku | claude-sonnet | ~$0.8 |
 | Local | Ollama qwen2.5:14b | Ollama qwq:32b | Free |
 
-See [USAGE.md](USAGE.md#全-api-模式配置不用本地模型) for detailed configuration.
+**Using local models?** Install [Ollama](https://ollama.com/), pull models (`ollama pull qwen2.5:14b`), then select the "Fully Local" or "Hybrid" preset in the Web UI. No API key needed. See [USAGE.md](USAGE.md#本地模型配置ollama零成本) for step-by-step setup.
+
+See [USAGE.md](USAGE.md#全-api-模式配置不用本地模型) for API configuration details.
 
 ## Project Structure
 
@@ -113,7 +115,8 @@ comment-miner/
 │
 ├── prompts/
 │   ├── reader.txt          # Stage 1 reader prompt
-│   └── reporter.txt        # Stage 2 reporter prompt
+│   ├── reporter_quick.txt  # Stage 2 quick insight prompt
+│   └── reporter_deep.txt   # Stage 2 deep research prompt
 │
 └── frontend/               # React Web UI (Chinese/English)
     ├── src/App.jsx          # Main UI component
