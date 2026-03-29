@@ -24,6 +24,9 @@ const T = {
     copied: "已复制", copy: "复制", copyTitle: "复制到剪贴板",
     gemsEmpty: "精华评论将在 Stage 1 完成后出现", reportEmpty: "深度报告将在 Stage 2 完成后出现",
     connError: "连接中断，请检查后端是否正常运行", reqFail: "请求失败",
+    reportMode: "报告模式", reportQuick: "快速洞察", reportDeep: "深度研究",
+    reportQuickDesc: "3分钟掌握核心信息，800-1500字", reportDeepDesc: "社会观察视角，深度分析，3000字+",
+    downloadMd: "下载 Markdown", downloadPdf: "下载 PDF",
     openSource: "开源免费", license: "CC BY-NC 4.0 — 禁止商用",
     presets: {
       gemini:   { name: "Google Gemini（有$300赠金）", desc: "免费额度充裕，效果好" },
@@ -54,6 +57,9 @@ const T = {
     copied: "Copied", copy: "Copy", copyTitle: "Copy to clipboard",
     gemsEmpty: "Gem comments will appear after Stage 1 completes", reportEmpty: "Deep report will appear after Stage 2 completes",
     connError: "Connection lost. Please check if the backend is running.", reqFail: "Request failed",
+    reportMode: "Report Mode", reportQuick: "Quick Insight", reportDeep: "Deep Research",
+    reportQuickDesc: "Core insights in 3 min, 800-1500 words", reportDeepDesc: "Sociological analysis, 3000+ words",
+    downloadMd: "Download MD", downloadPdf: "Download PDF",
     openSource: "Open Source",  license: "CC BY-NC 4.0 — Non-commercial",
     presets: {
       gemini:   { name: "Google Gemini ($300 free)", desc: "Generous free tier, great quality" },
@@ -103,6 +109,7 @@ const Eye     = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none
 const Copy    = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>;
 const Retry   = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>;
 const LangIcon = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>;
+const Download = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 const now = () => new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -159,6 +166,8 @@ export default function App() {
   const [ytKey, setYtKey]       = useState(_saved?.ytKey || getKey("__youtube__") || "");
   const [biliSess, setBiliSess] = useState(_saved?.biliSess || getKey("__bilibili_sessdata__") || "");
 
+  const [reportMode, setReportMode] = useState(_saved?.reportMode || "quick");
+
   const [videoUrl,   setUrl]   = useState("");
   const [videoTitle, setTitle] = useState("");
   const [videoBrief, setBrief] = useState("");
@@ -190,8 +199,8 @@ export default function App() {
   }, [preset]);
 
   useEffect(() => {
-    saveConfig({ preset, reader, thinker, ytKey, biliSess, maxCmt });
-  }, [preset, reader, thinker, ytKey, biliSess, maxCmt]);
+    saveConfig({ preset, reader, thinker, ytKey, biliSess, maxCmt, reportMode });
+  }, [preset, reader, thinker, ytKey, biliSess, maxCmt, reportMode]);
 
   useEffect(() => {
     if (reader.apiKey)  saveKey(reader.baseUrl, reader.apiKey);
@@ -224,6 +233,14 @@ export default function App() {
     setTimeout(() => setCopied(""), 2000);
   }, []);
 
+  const downloadFile = useCallback((content, filename) => {
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  }, []);
+
   const runPipeline = async () => {
     const url = videoUrl.trim();
     if (!url || !isValidUrl(url)) return;
@@ -236,7 +253,7 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           video_url: url, video_title: videoTitle, video_brief: videoBrief,
-          max_comments: maxCmt, bilibili_sessdata: biliSess,
+          max_comments: maxCmt, bilibili_sessdata: biliSess, report_mode: reportMode,
           reader: { ...reader, youtube_api_key: ytKey }, thinker: { ...thinker },
         }),
       });
@@ -408,6 +425,23 @@ export default function App() {
               </div>
             </section>
 
+            <section style={{ marginBottom: 28 }}>
+              <h2 style={S.sec}>{t.reportMode}</h2>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                {[["quick", t.reportQuick, t.reportQuickDesc, "⚡"], ["deep", t.reportDeep, t.reportDeepDesc, "🔬"]].map(([k, name, desc, icon]) => (
+                  <button key={k} onClick={() => setReportMode(k)}
+                    style={{ ...S.presetCard, ...(reportMode === k ? S.presetOn : {}), display: "flex", alignItems: "flex-start", gap: 10 }}>
+                    {reportMode === k && <span style={{ position: "absolute", top: 8, right: 8, color: "#6366f1" }}><Check /></span>}
+                    <span style={{ fontSize: 24 }}>{icon}</span>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{name}</div>
+                      <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>{desc}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </section>
+
             <button onClick={runPipeline} disabled={!canRun}
               style={{ ...S.runBtn, ...(!canRun ? { opacity: 0.4, cursor: "not-allowed" } : {}) }}>
               <Play /><span style={{ marginLeft: 8 }}>{t.startAnalysis}</span>
@@ -460,6 +494,9 @@ export default function App() {
             <div>
               <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12, gap: 8 }}>
                 <CopyBtn text={gems} label="gems" />
+                <button style={S.ghostBtn} onClick={() => downloadFile(gems, `gems_${videoId || "comments"}.md`)}>
+                  <Download /> &nbsp;{t.downloadMd}
+                </button>
               </div>
               <div style={S.mdBox} className="md-content">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{gems}</ReactMarkdown>
@@ -476,6 +513,9 @@ export default function App() {
             <div>
               <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12, gap: 8 }}>
                 <CopyBtn text={report} label="report" />
+                <button style={S.ghostBtn} onClick={() => downloadFile(report, `report_${videoId || "analysis"}.md`)}>
+                  <Download /> &nbsp;{t.downloadMd}
+                </button>
               </div>
               <div style={S.mdBox} className="md-content">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{report}</ReactMarkdown>

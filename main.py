@@ -44,8 +44,9 @@ def main(video_url: str):
 
     # Stage 2: 思考模型写报告
     print("🧠 Generating deep report...")
+    report_mode = config.get("report_mode", "quick")
     writer_llm = LLMClient(config["llm"]["thinker"])
-    writer = ReportWriter(writer_llm)
+    writer = ReportWriter(writer_llm, mode=report_mode)
     report_path = writer.generate(gems_path, video_context)
     print(f"✅ Report saved to: {report_path}")
 

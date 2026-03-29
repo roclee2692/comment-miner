@@ -56,6 +56,7 @@ class RunRequest(BaseModel):
     video_brief: str = ""
     max_comments: int = 5000
     bilibili_sessdata: str = ""
+    report_mode: str = "quick"   # "quick" | "deep"
     reader: dict
     thinker: dict
 
@@ -221,17 +222,18 @@ def _run_job(job_id: str, req: RunRequest):
         _push(job_id, f"   ✓ 精读完成，gems.md：{reader.kept_count} 条精华评论", "success")
 
         # Stage 2
-        _push(job_id, f"🧠 Stage 2: 思考模型写报告 ({req.thinker.get('model', '?')})...", "stage")
+        mode_label = "深度研究" if req.report_mode == "deep" else "快速洞察"
+        _push(job_id, f"🧠 Stage 2: {mode_label}报告 ({req.thinker.get('model', '?')})...", "stage")
         thinker_cfg = {
             "provider": req.thinker.get("provider", "openai_compatible"),
             "model": req.thinker.get("model", ""),
             "base_url": req.thinker.get("baseUrl", ""),
             "api_key": req.thinker.get("apiKey", ""),
             "temperature": req.thinker.get("temperature", 0.6),
-            "max_tokens": req.thinker.get("maxTokens", 8192),
+            "max_tokens": req.thinker.get("maxTokens", 8192 if req.report_mode != "deep" else 16384),
         }
         writer_llm = LLMClient(thinker_cfg)
-        writer = ReportWriter(writer_llm)
+        writer = ReportWriter(writer_llm, mode=req.report_mode)
         report_path = writer.generate(gems_path, video_context)
         _push(job_id, f"   ✓ 报告已生成: {report_path}", "success")
 
