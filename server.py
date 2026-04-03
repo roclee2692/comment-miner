@@ -7,10 +7,12 @@ Endpoints:
   GET  /api/gems/{id}    Return gems.md content
   GET  /api/report/{id}  Return report.md content
   GET  /api/status/{id}  Job status (running / done / error)
+  GET  /api/defaults     Server-side default config (for cloud deployment)
 """
 
 import asyncio
 import json
+import os
 import re
 import time
 import traceback
@@ -41,6 +43,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Server-side defaults (from environment variables) ─────────────────────
+# Set these in Render/Railway dashboard → Environment Variables:
+#   READER_PROVIDER, READER_MODEL, READER_BASE_URL, READER_API_KEY
+#   THINKER_PROVIDER, THINKER_MODEL, THINKER_BASE_URL, THINKER_API_KEY
+#   YOUTUBE_API_KEY, BILIBILI_SESSDATA
+
+def _get_server_defaults() -> dict | None:
+    """Return server-side LLM config from env vars, or None if not configured."""
+    reader_model = os.environ.get("READER_MODEL", "")
+    thinker_model = os.environ.get("THINKER_MODEL", "")
+    if not reader_model or not thinker_model:
+        return None
+    return {
+        "reader": {
+            "provider": os.environ.get("READER_PROVIDER", "openai_compatible"),
+            "model": reader_model,
+            "baseUrl": os.environ.get("READER_BASE_URL", ""),
+            "apiKey": os.environ.get("READER_API_KEY", ""),
+        },
+        "thinker": {
+            "provider": os.environ.get("THINKER_PROVIDER", "openai_compatible"),
+            "model": thinker_model,
+            "baseUrl": os.environ.get("THINKER_BASE_URL", ""),
+            "apiKey": os.environ.get("THINKER_API_KEY", ""),
+        },
+        "youtube_api_key": os.environ.get("YOUTUBE_API_KEY", ""),
+        "bilibili_sessdata": os.environ.get("BILIBILI_SESSDATA", ""),
+    }
+
+
 # In-memory job store (thread-safe)
 _jobs: dict[str, dict] = {}  # job_id → {status, logs, video_id, created_at}
 _jobs_lock = Lock()
@@ -58,8 +90,8 @@ class RunRequest(BaseModel):
     bilibili_sessdata: str = ""
     report_mode: str = "quick"   # "quick" | "deep"
     keep_per_batch: int = 5      # 每批20条评论中最多保留几条精华
-    reader: dict
-    thinker: dict
+    reader: dict = {}
+    thinker: dict = {}
 
     @field_validator("max_comments")
     @classmethod
@@ -70,6 +102,20 @@ class RunRequest(BaseModel):
     @classmethod
     def clamp_keep_per_batch(cls, v: int) -> int:
         return max(1, min(v, 15))
+
+
+@app.get("/api/defaults")
+async def get_defaults():
+    """Return whether server-side defaults are configured (without exposing keys)."""
+    defaults = _get_server_defaults()
+    if not defaults:
+        return {"has_defaults": False}
+    return {
+        "has_defaults": True,
+        "reader_model": defaults["reader"]["model"],
+        "thinker_model": defaults["thinker"]["model"],
+        "has_youtube_key": bool(defaults.get("youtube_api_key")),
+    }
 
 
 @app.post("/api/run")
@@ -154,6 +200,16 @@ def _cleanup_old_jobs():
 
 def _run_job(job_id: str, req: RunRequest):
     try:
+        # Merge server-side defaults for fields the frontend didn't provide
+        srv = _get_server_defaults()
+        if srv:
+            if not req.reader.get("model"):
+                req.reader = srv["reader"]
+            if not req.thinker.get("model"):
+                req.thinker = srv["thinker"]
+            if not req.bilibili_sessdata and srv.get("bilibili_sessdata"):
+                req.bilibili_sessdata = srv["bilibili_sessdata"]
+
         _push(job_id, "📥 Stage 0: 采集评论...", "stage")
 
         # Build a minimal config dict for the scraper
@@ -162,8 +218,9 @@ def _run_job(job_id: str, req: RunRequest):
             "bilibili": {},
             "max_comments": req.max_comments,
         }
-        if req.reader.get("youtube_api_key"):
-            config["youtube"]["api_key"] = req.reader["youtube_api_key"]
+        yt_key = req.reader.get("youtube_api_key") or (srv or {}).get("youtube_api_key", "")
+        if yt_key:
+            config["youtube"]["api_key"] = yt_key
         else:
             cfg_path = Path("config.yaml")
             if cfg_path.exists():

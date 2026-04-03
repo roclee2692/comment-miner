@@ -31,6 +31,9 @@ const T = {
     downloadMd: "下载 Markdown", downloadPdf: "下载 PDF",
     ollamaHint: "使用本地模型前，请确保已安装并启动 Ollama，并拉取所需模型。",
     ollamaSteps: ["1. 安装 Ollama：ollama.com 下载", "2. 启动：ollama serve", "3. 拉取模型：ollama pull qwen2.5:14b", "4. API Key 留空，无需填写"],
+    expressMode: "极简模式", expressDesc: "服务端已配置好模型，粘贴链接即可分析",
+    expressModels: (r, t) => `精读: ${r} / 报告: ${t}`,
+    expressAdvanced: "显示高级选项", expressHide: "隐藏高级选项",
     openSource: "开源免费", license: "CC BY-NC 4.0 — 禁止商用",
     presets: {
       gemini:   { name: "Google Gemini（有$300赠金）", desc: "免费额度充裕，效果好" },
@@ -68,6 +71,9 @@ const T = {
     downloadMd: "Download MD", downloadPdf: "Download PDF",
     ollamaHint: "Before using local models, make sure Ollama is installed, running, and models are pulled.",
     ollamaSteps: ["1. Install Ollama: ollama.com", "2. Start: ollama serve", "3. Pull model: ollama pull qwen2.5:14b", "4. Leave API Key empty"],
+    expressMode: "Express Mode", expressDesc: "Server has pre-configured models. Just paste a link and go!",
+    expressModels: (r, t) => `Reader: ${r} / Report: ${t}`,
+    expressAdvanced: "Show advanced options", expressHide: "Hide advanced options",
     openSource: "Open Source",  license: "CC BY-NC 4.0 — Non-commercial",
     presets: {
       gemini:   { name: "Google Gemini ($300 free)", desc: "Generous free tier, great quality" },
@@ -190,15 +196,26 @@ export default function App() {
   const [copied,  setCopied]  = useState("");
   const [urlError, setUrlErr] = useState("");
 
+  // Express mode: server has pre-configured defaults
+  const [serverDefaults, setServerDefaults] = useState(null); // {has_defaults, reader_model, thinker_model}
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   const logRef = useRef(null);
   const esRef  = useRef(null);
   const t = T[lang];
+
+  const expressMode = serverDefaults?.has_defaults && !showAdvanced;
 
   const toggleLang = () => {
     const next = lang === "zh" ? "en" : "zh";
     setLang(next);
     try { localStorage.setItem(LANG_KEY, next); } catch {}
   };
+
+  // Check for server-side defaults on mount
+  useEffect(() => {
+    fetch("/api/defaults").then(r => r.json()).then(setServerDefaults).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const p = PRESETS[preset];
@@ -263,7 +280,8 @@ export default function App() {
         body: JSON.stringify({
           video_url: url, video_title: videoTitle, video_brief: videoBrief,
           max_comments: maxCmt, bilibili_sessdata: biliSess, report_mode: reportMode, keep_per_batch: keepPerBatch,
-          reader: { ...reader, youtube_api_key: ytKey }, thinker: { ...thinker },
+          reader: expressMode ? {} : { ...reader, youtube_api_key: ytKey },
+          thinker: expressMode ? {} : { ...thinker },
         }),
       });
 
@@ -305,7 +323,7 @@ export default function App() {
 
   const stage = currentStage(logs);
   const progress = running ? Math.min(90, Math.max(5, stage * 28 + 12)) : (stage >= 3 ? 100 : (logs.length > 0 ? 5 : 0));
-  const canRun = videoUrl.trim() && isValidUrl(videoUrl.trim()) && !running;
+  const canRun = videoUrl.trim() && isValidUrl(videoUrl.trim()) && !running && (expressMode || reader.model);
 
   // ── Sub-components ─────────────────────────────────────────────────────
   const Field = ({ label, children }) => (
@@ -380,6 +398,15 @@ export default function App() {
         {/* CONFIG */}
         {tab === "config" && (
           <div>
+            {/* Express mode banner */}
+            {serverDefaults?.has_defaults && (
+              <div style={{ marginBottom: 20, padding: "12px 16px", background: "linear-gradient(135deg, #e0e7ff, #ede9fe)", borderRadius: 10, border: "1px solid #a5b4fc" }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: "#4338ca", marginBottom: 4 }}>{t.expressMode}</div>
+                <div style={{ fontSize: 12, color: "#4338ca" }}>{t.expressDesc}</div>
+                <div style={{ fontSize: 11, color: "#6366f1", marginTop: 4 }}>{t.expressModels(serverDefaults.reader_model, serverDefaults.thinker_model)}</div>
+              </div>
+            )}
+
             <section style={{ marginBottom: 28 }}>
               <h2 style={S.sec}>{t.videoInfo}</h2>
               <Field label={t.videoUrl}>
@@ -394,56 +421,66 @@ export default function App() {
                 <textarea style={{ ...S.input, height: 56, resize: "vertical" }}
                   value={videoBrief} onChange={e => setBrief(e.target.value)} placeholder={t.videoBriefPh} />
               </Field>
-              <Field label={t.ytKey}>
-                <input style={S.input} type="password" value={ytKey} onChange={e => setYtKey(e.target.value)} placeholder="AIza..." />
-              </Field>
-              <Field label={t.biliSess}>
-                <input style={S.input} type="password" value={biliSess} onChange={e => setBiliSess(e.target.value)} placeholder={t.biliSessPh} />
-                <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>{t.biliSessHelp}</div>
-              </Field>
+              {!expressMode && (
+                <>
+                  <Field label={t.ytKey}>
+                    <input style={S.input} type="password" value={ytKey} onChange={e => setYtKey(e.target.value)} placeholder="AIza..." />
+                  </Field>
+                  <Field label={t.biliSess}>
+                    <input style={S.input} type="password" value={biliSess} onChange={e => setBiliSess(e.target.value)} placeholder={t.biliSessPh} />
+                    <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>{t.biliSessHelp}</div>
+                  </Field>
+                </>
+              )}
               <Field label={t.maxComments(maxCmt)}>
                 <input type="range" min={500} max={10000} step={500} value={maxCmt}
                   onChange={e => setMax(Number(e.target.value))} style={{ width: "100%", accentColor: "#6366f1" }} />
               </Field>
-              <Field label={t.keepPerBatch(keepPerBatch)}>
-                <input type="range" min={1} max={15} step={1} value={keepPerBatch}
-                  onChange={e => setKeepPerBatch(Number(e.target.value))} style={{ width: "100%", accentColor: "#6366f1" }} />
-                <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>{t.keepPerBatchHelp}</div>
-              </Field>
-            </section>
-
-            <section style={{ marginBottom: 28 }}>
-              <h2 style={S.sec}>{t.modelPreset}</h2>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-                {Object.entries(PRESETS).map(([k, p]) => {
-                  const pi = t.presets[k];
-                  return (
-                    <button key={k} onClick={() => setPreset(k)}
-                      style={{ ...S.presetCard, ...(preset === k ? S.presetOn : {}) }}>
-                      {preset === k && <span style={{ position: "absolute", top: 8, right: 8, color: "#6366f1" }}><Check /></span>}
-                      <div style={{ fontWeight: 600, marginBottom: 2, fontSize: 13 }}>{pi.name}</div>
-                      {pi.desc && <div style={{ fontSize: 11, color: "#475569", marginBottom: 6 }}>{pi.desc}</div>}
-                      <div style={S.presetRow}><Eye /> {p.reader.model}</div>
-                      <div style={S.presetRow}><Cloud /> {p.thinker.model}</div>
-                    </button>
-                  );
-                })}
-              </div>
-              {(preset === "local" || preset === "hybrid") && (
-                <div style={{ marginTop: 10, padding: "10px 14px", background: "#fef3c7", borderRadius: 8, border: "1px solid #fbbf24", fontSize: 12, lineHeight: 1.7 }}>
-                  <div style={{ fontWeight: 600, marginBottom: 4, color: "#92400e" }}>{t.ollamaHint}</div>
-                  {t.ollamaSteps.map((s, i) => <div key={i} style={{ color: "#78350f" }}>{s}</div>)}
-                </div>
+              {!expressMode && (
+                <Field label={t.keepPerBatch(keepPerBatch)}>
+                  <input type="range" min={1} max={15} step={1} value={keepPerBatch}
+                    onChange={e => setKeepPerBatch(Number(e.target.value))} style={{ width: "100%", accentColor: "#6366f1" }} />
+                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>{t.keepPerBatchHelp}</div>
+                </Field>
               )}
             </section>
 
-            <section style={{ marginBottom: 28 }}>
-              <h2 style={S.sec}>{t.modelConfig}</h2>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                <ModelCard label={t.readerLabel} cfg={reader} setCfg={setReader} icon="📖" />
-                <ModelCard label={t.thinkerLabel} cfg={thinker} setCfg={setThinker} icon="🧠" />
-              </div>
-            </section>
+            {!expressMode && (
+              <>
+                <section style={{ marginBottom: 28 }}>
+                  <h2 style={S.sec}>{t.modelPreset}</h2>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                    {Object.entries(PRESETS).map(([k, p]) => {
+                      const pi = t.presets[k];
+                      return (
+                        <button key={k} onClick={() => setPreset(k)}
+                          style={{ ...S.presetCard, ...(preset === k ? S.presetOn : {}) }}>
+                          {preset === k && <span style={{ position: "absolute", top: 8, right: 8, color: "#6366f1" }}><Check /></span>}
+                          <div style={{ fontWeight: 600, marginBottom: 2, fontSize: 13 }}>{pi.name}</div>
+                          {pi.desc && <div style={{ fontSize: 11, color: "#475569", marginBottom: 6 }}>{pi.desc}</div>}
+                          <div style={S.presetRow}><Eye /> {p.reader.model}</div>
+                          <div style={S.presetRow}><Cloud /> {p.thinker.model}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {(preset === "local" || preset === "hybrid") && (
+                    <div style={{ marginTop: 10, padding: "10px 14px", background: "#fef3c7", borderRadius: 8, border: "1px solid #fbbf24", fontSize: 12, lineHeight: 1.7 }}>
+                      <div style={{ fontWeight: 600, marginBottom: 4, color: "#92400e" }}>{t.ollamaHint}</div>
+                      {t.ollamaSteps.map((s, i) => <div key={i} style={{ color: "#78350f" }}>{s}</div>)}
+                    </div>
+                  )}
+                </section>
+
+                <section style={{ marginBottom: 28 }}>
+                  <h2 style={S.sec}>{t.modelConfig}</h2>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                    <ModelCard label={t.readerLabel} cfg={reader} setCfg={setReader} icon="📖" />
+                    <ModelCard label={t.thinkerLabel} cfg={thinker} setCfg={setThinker} icon="🧠" />
+                  </div>
+                </section>
+              </>
+            )}
 
             <section style={{ marginBottom: 28 }}>
               <h2 style={S.sec}>{t.reportMode}</h2>
@@ -462,9 +499,16 @@ export default function App() {
               </div>
             </section>
 
+            {serverDefaults?.has_defaults && (
+              <button onClick={() => setShowAdvanced(!showAdvanced)}
+                style={{ ...S.ghostBtn, marginBottom: 12, fontSize: 12, width: "100%" }}>
+                {showAdvanced ? t.expressHide : t.expressAdvanced}
+              </button>
+            )}
+
             <button onClick={runPipeline} disabled={!canRun}
               style={{ ...S.runBtn, ...(!canRun ? { opacity: 0.4, cursor: "not-allowed" } : {}) }}>
-              <Play /><span style={{ marginLeft: 8 }}>{t.startAnalysis}</span>
+              <Play /><span style={{ marginLeft: 8 }}>{running ? t.running : t.startAnalysis}</span>
             </button>
           </div>
         )}
