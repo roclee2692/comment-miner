@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: comment-miner
+    runtime: docker
+    branch: main
+    plan: free

@@ -376,6 +376,53 @@ llm:
 
 ---
 
+## 云端部署（手机/iPad 随时可用）
+
+不想在电脑上一直跑 `python server.py`？可以把 CommentMiner 部署到云端，手机/iPad 打开网页就能用。
+
+### 推荐平台：Render（免费）
+
+项目已内置 Render 部署配置，一键部署。
+
+#### 部署步骤
+
+**1. 注册 Render**
+- 前往 [render.com](https://render.com/) 用 GitHub 账号登录
+
+**2. 创建 Web 服务**
+- 点击 **New** → **Web Service**
+- 连接你的 GitHub 仓库 `comment-miner`
+- Render 会自动检测到 Dockerfile
+
+**3. 配置**
+- **Name**: `comment-miner`（或任意名称）
+- **Region**: Singapore（选离你最近的）
+- **Branch**: `main`
+- **Plan**: **Free**
+- 点击 **Create Web Service**
+
+**4. 等待构建**
+- 首次构建约 2-3 分钟
+- 完成后获得一个公网 URL，如 `https://comment-miner.onrender.com`
+
+**5. 使用**
+- 在手机/iPad/任意设备的浏览器中打开该 URL
+- 配置 LLM API Key（和本地用法完全一样，Key 存在浏览器本地）
+- 粘贴视频链接，开始分析！
+
+#### 注意事项
+
+| 项目 | 说明 |
+|------|------|
+| **冷启动** | 免费版 15 分钟无流量会休眠，再次访问需等 ~30 秒唤醒 |
+| **存储** | 免费版重启后文件会丢失，建议及时下载报告 |
+| **长任务** | Pipeline 可以运行数十分钟到数小时，运行期间服务不会休眠 |
+| **升级** | Starter 计划 $7/月，无冷启动 + 持久化存储 |
+
+> 也可以用 [Railway](https://railway.app/)（$5/月免费额度）作为替代，同样支持 GitHub 自动部署。
+
+---
+
 ## 断点恢复
 
 Stage 1 支持断点恢复。如果运行中途中断（网络错误、手动停止等），再次运行**同一个视频 URL**，会自动从上次处理到的 batch 继续，不会重复处理已完成的评论。
