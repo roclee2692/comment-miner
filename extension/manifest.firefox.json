@@ -1,0 +1,62 @@
+{
+  "manifest_version": 3,
+  "name": "CommentMiner - 视频评论深度分析",
+  "version": "1.0.0",
+  "description": "一键分析 B站/YouTube 视频评论区，AI 深度挖掘评论洞察",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://*.bilibili.com/*",
+    "https://*.youtube.com/*",
+    "https://youtu.be/*",
+    "https://b23.tv/*",
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*"
+  ],
+  "background": {
+    "scripts": ["background.js"],
+    "type": "module"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "commentminer@nousresearch.com",
+      "strict_min_version": "115.0"
+    }
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "CommentMiner - 分析当前视频评论",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.bilibili.com/video/*",
+        "https://*.bilibili.com/bangumi/play/*",
+        "https://*.youtube.com/watch*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/*"],
+      "matches": ["https://*.bilibili.com/*", "https://*.youtube.com/*"]
+    }
+  ]
+}

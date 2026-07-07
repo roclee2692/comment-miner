@@ -136,14 +136,19 @@ function loadSaved() {
   try { const raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
 }
 function saveConfig(data) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch {}
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch { /* localStorage may be disabled */ }
+  // 同步保存到服务端（不等待响应）
+  fetch("/api/saved-config", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).catch(() => {});
 }
 function loadKeyMap() {
   try { const raw = localStorage.getItem(KEYS_STORAGE); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
 }
 function saveKey(baseUrl, apiKey) {
   if (!baseUrl) return;
-  try { const map = loadKeyMap(); if (apiKey) map[baseUrl] = apiKey; else delete map[baseUrl]; localStorage.setItem(KEYS_STORAGE, JSON.stringify(map)); } catch {}
+  try { const map = loadKeyMap(); if (apiKey) map[baseUrl] = apiKey; else delete map[baseUrl]; localStorage.setItem(KEYS_STORAGE, JSON.stringify(map)); } catch { /* localStorage may be disabled */ }
 }
 function getKey(baseUrl) { return loadKeyMap()[baseUrl] || ""; }
 
@@ -209,12 +214,27 @@ export default function App() {
   const toggleLang = () => {
     const next = lang === "zh" ? "en" : "zh";
     setLang(next);
-    try { localStorage.setItem(LANG_KEY, next); } catch {}
+    try { localStorage.setItem(LANG_KEY, next); } catch { /* localStorage may be disabled */ }
   };
 
   // Check for server-side defaults on mount
   useEffect(() => {
     fetch("/api/defaults").then(r => r.json()).then(setServerDefaults).catch(() => {});
+    // 从服务端恢复配置（解决换端口/换浏览器后 Key 丢失的问题）
+    if (!_saved?.reader?.apiKey || !_saved?.thinker?.apiKey) {
+      fetch("/api/saved-config").then(r => r.json()).then(cfg => {
+        if (cfg?.preset) setPreset(cfg.preset);
+        if (cfg?.reader?.model) setReader(cfg.reader);
+        if (cfg?.thinker?.model) setThinker(cfg.thinker);
+        if (cfg?.ytKey) setYtKey(cfg.ytKey);
+        if (cfg?.biliSess) setBiliSess(cfg.biliSess);
+        if (cfg?.maxCmt) setMax(cfg.maxCmt);
+        if (cfg?.reportMode) setReportMode(cfg.reportMode);
+        if (cfg?.keepPerBatch) setKeepPerBatch(cfg.keepPerBatch);
+        // 同步到 localStorage
+        if (cfg?.preset) saveConfig(cfg);
+      }).catch(() => {});
+    }
   }, []);
 
   useEffect(() => {

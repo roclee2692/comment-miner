@@ -1,9 +1,17 @@
 # 配置（含 API 密钥，不提交）
 config.yaml
+.user_config.json
+
+# 本地 Git/工作区辅助目录
+.git_disabled/
+.agents/
 
 # 运行产物
 data/
 reports/
+server*.log
+T1产物/
+image/
 
 # Python
 __pycache__/

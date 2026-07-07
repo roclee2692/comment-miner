@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CommentMiner - 视频评论分析</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app">
+    <!-- 头部 -->
+    <header class="header">
+      <div class="logo">
+        <span class="logo-icon">💎</span>
+        <span class="logo-text">CommentMiner</span>
+      </div>
+      <button id="settingsBtn" class="icon-btn" title="设置">⚙</button>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="main">
+      <!-- 视频信息卡片（点击可回到「分析当前视频」配置） -->
+      <div id="videoCard" class="video-card">
+        <div class="loading">识别视频中...</div>
+      </div>
+
+      <!-- 任务列表（多任务并行时显示，可切换查看不同视频的进度/结果） -->
+      <div id="tasksBar" class="tasks-bar hidden"></div>
+
+      <!-- 配置选项 -->
+      <div id="configSection" class="config-section">
+        <div class="field">
+          <label class="field-label">报告语言</label>
+          <div class="option-row">
+            <button class="option-btn active" data-lang="zh">中文</button>
+            <button class="option-btn" data-lang="en">English</button>
+            <button class="option-btn" data-lang="de">Deutsch</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field-label">分析模式</label>
+          <div class="mode-row">
+            <button class="mode-btn active" data-mode="quick">
+              <div class="mode-icon">⚡</div>
+              <div class="mode-info">
+                <div class="mode-name">快速洞察</div>
+                <div class="mode-desc">3分钟掌握核心</div>
+              </div>
+            </button>
+            <button class="mode-btn" data-mode="deep">
+              <div class="mode-icon">🔬</div>
+              <div class="mode-info">
+                <div class="mode-name">深度研究</div>
+                <div class="mode-desc">社会观察视角</div>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field-label">
+            最大评论数
+            <span id="maxCmtValue" class="field-value">5000</span>
+          </label>
+          <input type="range" id="maxCmtSlider" min="500" max="10000" step="500" value="5000" class="slider">
+        </div>
+      </div>
+
+      <!-- 分析按钮 -->
+      <button id="startBtn" class="start-btn" disabled>
+        <span class="btn-icon">▶</span>
+        <span class="btn-text">开始分析</span>
+      </button>
+
+      <!-- 进度区域 -->
+      <div id="progressSection" class="progress-section hidden">
+        <div id="viewingLabel" class="viewing-label hidden"></div>
+        <div class="progress-bar-wrap">
+          <div id="progressBar" class="progress-bar"></div>
+        </div>
+        <div class="stage-indicator">
+          <div class="stage-chip" data-stage="0">🧹 采集</div>
+          <div class="stage-chip" data-stage="1">📖 精读</div>
+          <div class="stage-chip" data-stage="2">🧠 报告</div>
+          <div class="stage-chip" data-stage="3">✅ 完成</div>
+        </div>
+        <div id="logBox" class="log-box"></div>
+      </div>
+
+      <!-- 结果区域 -->
+      <div id="resultSection" class="result-section hidden">
+        <div class="result-title">🎉 分析完成</div>
+        <div class="result-buttons">
+          <button id="viewGemsBtn" class="result-btn">
+            <span>💎</span> 精华评论
+          </button>
+          <button id="viewReportBtn" class="result-btn primary">
+            <span>📊</span> 分析报告
+          </button>
+        </div>
+        <!-- 内嵌可滚动预览（在小窗里直接看） -->
+        <div id="previewBox" class="preview-box hidden"></div>
+        <!-- 其它查看方式 -->
+        <div class="result-actions">
+          <button id="sidePanelBtn" class="result-btn ghost hidden">
+            <span>🗔</span> 侧边栏
+          </button>
+          <button id="openTabBtn" class="result-btn ghost">
+            <span>🌐</span> 新标签
+          </button>
+          <button id="openDashboardBtn" class="result-btn ghost">
+            <span>🧭</span> 完整面板
+          </button>
+        </div>
+        <button id="restartBtn" class="restart-btn">
+          重新分析
+        </button>
+      </div>
+
+      <!-- 错误提示 -->
+      <div id="errorBox" class="error-box hidden"></div>
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="footer">
+      <span id="backendStatus" class="backend-status">● 后端连接中...</span>
+    </footer>
+  </div>
+
+  <!-- 设置面板 -->
+  <div id="settingsPanel" class="settings-panel hidden">
+    <div class="settings-header">
+      <span>设置</span>
+      <button id="closeSettingsBtn" class="icon-btn">✕</button>
+    </div>
+    <div class="settings-body">
+      <div class="field">
+        <label class="field-label">后端地址</label>
+        <input type="text" id="backendUrlInput" value="http://localhost:8000" class="input">
+      </div>
+      <button id="saveSettingsBtn" class="save-btn">保存</button>
+    </div>
+  </div>
+
+  <script src="md.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

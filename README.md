@@ -9,6 +9,7 @@
 ## 工作原理
 
 ```
+
 YouTube / B站 评论
       │
       ▼
@@ -71,20 +72,20 @@ python main.py "https://www.youtube.com/watch?v=VIDEO_ID"
 
 ## 支持的平台
 
-| 平台 | 需要 API Key | 说明 |
-|------|-------------|------|
-| **B站** | 不需要 | 使用公开 API，直接粘贴链接 |
+| 平台              | 需要 API Key                 | 说明                                                       |
+| ----------------- | ---------------------------- | ---------------------------------------------------------- |
+| **B站**     | 不需要                       | 使用公开 API，直接粘贴链接                                 |
 | **YouTube** | 需要 YouTube Data API v3 Key | [获取方式](USAGE.md#youtube-api-key仅分析-youtube-视频时需要) |
 
 ## LLM 方案选择
 
-| 方案 | Stage 1 精读 | Stage 2 报告 | 成本/次 |
-|------|-------------|-------------|---------|
-| **Google Gemini** | gemini-3.1-flash-lite | gemini-3.1-pro | 有$300赠金 |
-| DeepSeek | deepseek-chat | deepseek-reasoner | ~¥0.3 |
-| OpenAI | gpt-5.4-mini | gpt-5.4 | ~$0.5 |
-| Claude | claude-haiku | claude-sonnet | ~$0.8 |
-| 全本地 | Ollama qwen2.5:14b | Ollama qwq:32b | ¥0 |
+| 方案                    | Stage 1 精读          | Stage 2 报告      | 成本/次    |
+| ----------------------- | --------------------- | ----------------- | ---------- |
+| **Google Gemini** | gemini-3.1-flash-lite | gemini-3.1-pro    | 有$300赠金 |
+| DeepSeek                | deepseek-chat         | deepseek-reasoner | ~¥0.3     |
+| OpenAI                  | gpt-5.4-mini          | gpt-5.4           | ~$0.5      |
+| Claude                  | claude-haiku          | claude-sonnet     | ~$0.8      |
+| 全本地                  | Ollama qwen2.5:14b    | Ollama qwq:32b    | ¥0        |
 
 **想用本地模型？** 安装 [Ollama](https://ollama.com/)，拉取模型（`ollama pull qwen2.5:14b`），然后在前端选择「全本地」或「混搭」预设即可，无需 API Key。详细教程见 [USAGE.md](USAGE.md#本地模型配置ollama零成本)。
 

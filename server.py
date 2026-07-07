@@ -14,9 +14,19 @@ import asyncio
 import json
 import os
 import re
+import sys
 import time
 import traceback
 import uuid
+
+# Windows consoles default to a legacy codepage (e.g. GBK), which raises
+# UnicodeEncodeError when the pipeline prints emoji/CJK progress lines. Force
+# UTF-8 on stdout/stderr so the pipeline runs locally regardless of codepage.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 from pathlib import Path
 from threading import Thread, Lock
 from typing import AsyncGenerator
@@ -33,6 +43,7 @@ from stage0_prefilter import prefilter
 from stage1_llm_read import LLMReader
 from stage2_report import ReportWriter
 from llm.client import LLMClient
+from url_utils import extract_first_url, normalize_video_url, detect_platform
 
 app = FastAPI(title="CommentMiner API")
 
@@ -73,6 +84,32 @@ def _get_server_defaults() -> dict | None:
     }
 
 
+def _get_local_config_defaults() -> dict | None:
+    """Fallback defaults from the locally saved .user_config.json.
+
+    The web UI sends reader/thinker keys in each request, but the browser
+    extension sends empty configs (it has no access to the saved keys). When no
+    env-var defaults are configured, fall back to the keys the user saved
+    locally so extension-triggered runs work end to end.
+    """
+    if not _LOCAL_CONFIG_PATH.exists():
+        return None
+    try:
+        cfg = json.loads(_LOCAL_CONFIG_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    reader = cfg.get("reader") or {}
+    thinker = cfg.get("thinker") or {}
+    if not reader.get("model") or not thinker.get("model"):
+        return None
+    return {
+        "reader": reader,
+        "thinker": thinker,
+        "youtube_api_key": cfg.get("ytKey", ""),
+        "bilibili_sessdata": cfg.get("biliSess", ""),
+    }
+
+
 # In-memory job store (thread-safe)
 _jobs: dict[str, dict] = {}  # job_id → {status, logs, video_id, created_at}
 _jobs_lock = Lock()
@@ -89,6 +126,7 @@ class RunRequest(BaseModel):
     max_comments: int = 5000
     bilibili_sessdata: str = ""
     report_mode: str = "quick"   # "quick" | "deep"
+    report_language: str = "zh"  # "zh" | "en" | "de" —— 仅控制 Stage2 报告输出语言
     keep_per_batch: int = 5      # 每批20条评论中最多保留几条精华
     reader: dict = {}
     thinker: dict = {}
@@ -102,6 +140,88 @@ class RunRequest(BaseModel):
     @classmethod
     def clamp_keep_per_batch(cls, v: int) -> int:
         return max(1, min(v, 15))
+    
+    @field_validator("report_language")
+    @classmethod
+    def validate_language(cls, v: str) -> str:
+        if v not in ("zh", "en", "de"):
+            return "zh"
+        return v
+
+
+# ── 本地配置持久化（保存在服务端，不依赖浏览器） ─────────────────────────
+_LOCAL_CONFIG_PATH = Path(__file__).parent / ".user_config.json"
+
+
+@app.get("/api/saved-config")
+async def get_saved_config():
+    """读取本地保存的用户配置"""
+    if not _LOCAL_CONFIG_PATH.exists():
+        return {}
+    try:
+        return json.loads(_LOCAL_CONFIG_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _merge_preserve_secrets(new: dict, old: dict) -> dict:
+    """Merge an incoming config over the existing one without letting blank
+    secret fields clobber stored values.
+
+    The web frontend auto-saves its in-memory state on mount/change and may send
+    empty apiKey/ytKey/biliSess (keys are masked client-side). Without this guard
+    those blanks would wipe the credentials the browser extension relies on.
+    """
+    merged = dict(new)
+    # Top-level secrets
+    for key in ("ytKey", "biliSess"):
+        if not merged.get(key) and old.get(key):
+            merged[key] = old[key]
+    # Nested provider apiKeys
+    for section in ("reader", "thinker"):
+        new_sec = dict(merged.get(section) or {})
+        old_sec = old.get(section) or {}
+        if not new_sec.get("apiKey") and old_sec.get("apiKey"):
+            new_sec["apiKey"] = old_sec["apiKey"]
+        if new_sec:
+            merged[section] = new_sec
+    return merged
+
+
+def _merge_runtime_llm_config(incoming: dict, fallback: dict) -> dict:
+    """Fill missing runtime LLM fields from saved defaults.
+
+    The web UI can send a partial config such as model/baseUrl with an empty
+    apiKey when browser storage is stale or masked. Treat blank fields as
+    missing, but let explicit incoming values win.
+    """
+    incoming = dict(incoming or {})
+    fallback = dict(fallback or {})
+    if not incoming.get("model"):
+        return fallback
+
+    merged = dict(incoming)
+    for key in ("provider", "baseUrl", "apiKey", "temperature", "maxTokens"):
+        if not merged.get(key) and fallback.get(key):
+            merged[key] = fallback[key]
+    return merged
+
+
+@app.post("/api/saved-config")
+async def save_config(config: dict):
+    """保存用户配置到本地文件（保留已存在的密钥，避免被前端空值覆盖）"""
+    try:
+        old = {}
+        if _LOCAL_CONFIG_PATH.exists():
+            try:
+                old = json.loads(_LOCAL_CONFIG_PATH.read_text(encoding="utf-8"))
+            except Exception:
+                old = {}
+        config = _merge_preserve_secrets(config, old)
+        _LOCAL_CONFIG_PATH.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/defaults")
@@ -115,6 +235,35 @@ async def get_defaults():
         "reader_model": defaults["reader"]["model"],
         "thinker_model": defaults["thinker"]["model"],
         "has_youtube_key": bool(defaults.get("youtube_api_key")),
+    }
+
+
+class ExtractUrlRequest(BaseModel):
+    text: str
+
+
+@app.post("/api/extract-url")
+async def extract_url(req: ExtractUrlRequest):
+    """从分享文本中提取并规范化视频 URL。
+    
+    - 自动从任意文本中提取视频链接
+    - 还原 b23.tv 短链为真实 BV 号链接
+    - 规范化 youtu.be 等短链
+    - 返回平台类型
+    """
+    url = extract_first_url(req.text)
+    if not url:
+        # 如果没有匹配到 URL，直接把输入当作 URL 尝试（用户可能直接贴了链接）
+        url = req.text.strip()
+    
+    # 规范化（还原短链）
+    normalized = normalize_video_url(url)
+    platform = detect_platform(normalized)
+    
+    return {
+        "original_url": url,
+        "normalized_url": normalized,
+        "platform": platform,
     }
 
 
@@ -200,15 +349,25 @@ def _cleanup_old_jobs():
 
 def _run_job(job_id: str, req: RunRequest):
     try:
-        # Merge server-side defaults for fields the frontend didn't provide
-        srv = _get_server_defaults()
+        # Merge server-side defaults for fields the frontend didn't provide.
+        # Prefer env-var defaults; fall back to locally saved .user_config.json
+        # so the browser extension (which sends empty configs) also works.
+        srv = _get_server_defaults() or _get_local_config_defaults()
         if srv:
-            if not req.reader.get("model"):
-                req.reader = srv["reader"]
-            if not req.thinker.get("model"):
-                req.thinker = srv["thinker"]
+            req.reader = _merge_runtime_llm_config(req.reader, srv["reader"])
+            req.thinker = _merge_runtime_llm_config(req.thinker, srv["thinker"])
             if not req.bilibili_sessdata and srv.get("bilibili_sessdata"):
                 req.bilibili_sessdata = srv["bilibili_sessdata"]
+
+        # ── URL 规范化：从分享文本提取 + 还原短链 ──
+        _push(job_id, "🔍 解析视频链接...", "info")
+        extracted = extract_first_url(req.video_url)
+        if extracted:
+            req.video_url = extracted
+        normalized_url = normalize_video_url(req.video_url)
+        if normalized_url != req.video_url:
+            _push(job_id, f"   ✓ 链接已规范化: {normalized_url}", "success")
+            req.video_url = normalized_url
 
         _push(job_id, "📥 Stage 0: 采集评论...", "stage")
 
@@ -286,7 +445,8 @@ def _run_job(job_id: str, req: RunRequest):
 
         # Stage 2
         mode_label = "深度研究" if req.report_mode == "deep" else "快速洞察"
-        _push(job_id, f"🧠 Stage 2: {mode_label}报告 ({req.thinker.get('model', '?')})...", "stage")
+        lang_label = {"zh": "中文", "en": "English", "de": "Deutsch"}.get(req.report_language, "中文")
+        _push(job_id, f"🧠 Stage 2: {mode_label}报告 ({lang_label}) ({req.thinker.get('model', '?')})...", "stage")
         thinker_cfg = {
             "provider": req.thinker.get("provider", "openai_compatible"),
             "model": req.thinker.get("model", ""),
@@ -296,7 +456,7 @@ def _run_job(job_id: str, req: RunRequest):
             "max_tokens": req.thinker.get("maxTokens", 8192 if req.report_mode != "deep" else 16384),
         }
         writer_llm = LLMClient(thinker_cfg)
-        writer = ReportWriter(writer_llm, mode=req.report_mode)
+        writer = ReportWriter(writer_llm, mode=req.report_mode, language=req.report_language)
         report_path = writer.generate(gems_path, video_context)
         _push(job_id, f"   ✓ 报告已生成: {report_path}", "success")
 

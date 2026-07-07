@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CommentMiner 侧边栏</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f1117; color: #cbd5e1; font-size: 13px; line-height: 1.7;
+    }
+    .sp-header {
+      position: sticky; top: 0; z-index: 10;
+      background: #0d1020; border-bottom: 1px solid #1e2435;
+      padding: 12px 16px;
+    }
+    .sp-title { font-size: 14px; font-weight: 700; color: #e2e8f0;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .sp-subtitle { font-size: 12px; color: #a78bfa; margin-top: 4px; }
+    .sp-content { padding: 16px; }
+    h1, h2, h3, h4 { color: #e2e8f0; margin: 16px 0 8px; line-height: 1.4; }
+    h1 { font-size: 17px; }
+    h2 { font-size: 15px; color: #a78bfa; }
+    h3 { font-size: 14px; color: #93c5fd; }
+    p { margin: 7px 0; word-break: break-word; }
+    ul, ol { margin: 8px 0 8px 22px; }
+    li { margin: 4px 0; }
+    blockquote { border-left: 3px solid #6366f1; padding-left: 12px; margin: 8px 0; color: #94a3b8; }
+    code { background: #141929; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+    pre { background: #080b12; padding: 12px; border-radius: 8px; overflow-x: auto; margin: 8px 0; }
+    pre code { background: transparent; padding: 0; }
+    a { color: #60a5fa; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    hr { border: none; border-top: 1px solid #1e2a40; margin: 14px 0; }
+    strong { color: #e2e8f0; }
+    .sp-hint { color: #64748b; padding: 8px 0; }
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: #080b12; }
+    ::-webkit-scrollbar-thumb { background: #1e2a40; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="sp-header">
+    <div id="title" class="sp-title">CommentMiner</div>
+    <div id="subtitle" class="sp-subtitle"></div>
+  </div>
+  <div id="content" class="sp-content">
+    <p class="sp-hint">请在扩展弹窗中选择要查看的结果。</p>
+  </div>
+
+  <script src="md.js"></script>
+  <script src="sidepanel.js"></script>
+</body>
+</html>
